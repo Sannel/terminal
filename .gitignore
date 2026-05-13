@@ -297,4 +297,6 @@ Makefile
 
 # Linux CMake build artifacts
 build/kterm/
+build/lterm/
 build/lib/
+build/kterm_version.h
