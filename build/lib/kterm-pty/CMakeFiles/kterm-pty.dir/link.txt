@@ -1,2 +1,0 @@
-/usr/bin/ar qc libkterm-pty.a "CMakeFiles/kterm-pty.dir/kterm-pty_autogen/mocs_compilation.cpp.o" "CMakeFiles/kterm-pty.dir/src/PtyConnection.cpp.o"
-/usr/bin/ranlib libkterm-pty.a
