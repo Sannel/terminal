@@ -3,9 +3,15 @@ cmake_minimum_required(VERSION 3.21)
 find_package(Qt6 REQUIRED COMPONENTS Core)
 
 add_library(kterm-core STATIC
+    include/KTerminal.hpp
+    include/KTerminalDispatch.hpp
     src/TextBuffer.cpp
     src/KTerminalDispatch.cpp
     src/KTerminal.cpp
+)
+
+set_target_properties(kterm-core PROPERTIES
+    AUTOMOC ON
 )
 
 target_include_directories(kterm-core PUBLIC include)

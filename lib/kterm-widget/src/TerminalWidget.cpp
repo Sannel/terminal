@@ -1,0 +1,433 @@
+// Copyright (c) Sannel LLC.
+// Licensed under the MIT license.
+
+#include "TerminalWidget.hpp"
+
+#include <QFontDatabase>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QScrollBar>
+#include <QWheelEvent>
+
+namespace KTerm {
+
+// ── ANSI 16-color palette (xterm defaults) ───────────────────────────────────
+
+static const QColor s_ansiColors[16] = {
+    // Normal (0-7)
+    QColor(0x00, 0x00, 0x00), // Black
+    QColor(0x80, 0x00, 0x00), // Red
+    QColor(0x00, 0x80, 0x00), // Green
+    QColor(0x80, 0x80, 0x00), // Yellow
+    QColor(0x00, 0x00, 0x80), // Blue
+    QColor(0x80, 0x00, 0x80), // Magenta
+    QColor(0x00, 0x80, 0x80), // Cyan
+    QColor(0xC0, 0xC0, 0xC0), // White
+    // Bright (8-15)
+    QColor(0x80, 0x80, 0x80), // Bright Black
+    QColor(0xFF, 0x00, 0x00), // Bright Red
+    QColor(0x00, 0xFF, 0x00), // Bright Green
+    QColor(0xFF, 0xFF, 0x00), // Bright Yellow
+    QColor(0x00, 0x00, 0xFF), // Bright Blue
+    QColor(0xFF, 0x00, 0xFF), // Bright Magenta
+    QColor(0x00, 0xFF, 0xFF), // Bright Cyan
+    QColor(0xFF, 0xFF, 0xFF), // Bright White
+};
+
+// Default terminal fg/bg.
+static const QColor s_defaultFg{ 0xCC, 0xCC, 0xCC };
+static const QColor s_defaultBg{ 0x1E, 0x1E, 0x1E };
+
+// ── xterm 256-color table ────────────────────────────────────────────────────
+
+static QColor colorFrom256(uint8_t idx)
+{
+    if (idx < 16) {
+        return s_ansiColors[idx];
+    }
+    if (idx >= 232) {
+        // Grayscale ramp
+        const int v = 8 + (idx - 232) * 10;
+        return QColor(v, v, v);
+    }
+    // 6×6×6 color cube
+    idx -= 16;
+    const int b = idx % 6;
+    const int g = (idx / 6) % 6;
+    const int r = idx / 36;
+    auto f = [](int c) { return c == 0 ? 0 : 55 + c * 40; };
+    return QColor(f(r), f(g), f(b));
+}
+
+static QColor resolveColor(const TextColor& tc, bool isFg)
+{
+    switch (tc.type) {
+    case ColorType::Default:
+        return isFg ? s_defaultFg : s_defaultBg;
+    case ColorType::Index16:
+        return (tc.index() < 16) ? s_ansiColors[tc.index()] : s_defaultFg;
+    case ColorType::Index256:
+        return colorFrom256(tc.index());
+    case ColorType::RGB:
+        return QColor(tc.r, tc.g, tc.b);
+    }
+    return isFg ? s_defaultFg : s_defaultBg;
+}
+
+// ── TerminalWidget ────────────────────────────────────────────────────────────
+
+TerminalWidget::TerminalWidget(QWidget* parent) :
+    QAbstractScrollArea(parent),
+    _font(QFontDatabase::systemFont(QFontDatabase::FixedFont)),
+    _fm(_font)
+{
+    _font.setPointSize(11);
+    _fm = QFontMetricsF(_font);
+
+    // Compute cell dimensions from the font.
+    _cellW = static_cast<int>(std::ceil(_fm.horizontalAdvance(QLatin1Char('M'))));
+    _cellH = static_cast<int>(std::ceil(_fm.height()));
+    _baselineOffset = static_cast<int>(std::ceil(_fm.ascent()));
+
+    setFont(_font);
+    setFocusPolicy(Qt::StrongFocus);
+    viewport()->setBackgroundRole(QPalette::NoRole);
+    viewport()->setAutoFillBackground(false);
+
+    // Cursor blink: 500ms interval.
+    _cursorBlinkTimer = new QTimer(this);
+    _cursorBlinkTimer->setInterval(500);
+    connect(_cursorBlinkTimer, &QTimer::timeout, this, [this]() {
+        _cursorVisible = !_cursorVisible;
+        _scheduleRepaint();
+    });
+
+    // Repaint coalescer: collapse multiple dirty signals into one update().
+    _repaintCoalescer = new QTimer(this);
+    _repaintCoalescer->setSingleShot(true);
+    _repaintCoalescer->setInterval(16); // ~60fps cap
+    connect(_repaintCoalescer, &QTimer::timeout, this, [this]() {
+        _repaintPending = false;
+        viewport()->update();
+        _updateScrollbar();
+    });
+
+    // Create the terminal (default size, resized in showEvent/resizeEvent).
+    _terminal = new KTerminal(_rows, _cols, this);
+
+    connect(_terminal, &KTerminal::repaintNeeded, this, &TerminalWidget::_onRepaintNeeded);
+    connect(_terminal, &KTerminal::titleChanged, this, &TerminalWidget::_onTitleChanged);
+    connect(_terminal, &KTerminal::terminated, this, [this]() {
+        // Shell exited — could close the widget or show a message.
+        _scheduleRepaint();
+    });
+
+    // Vertical scrollbar only.
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    verticalScrollBar()->setSingleStep(1);
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
+        const int maxVal = verticalScrollBar()->maximum();
+        // value==maximum means live view (bottom); smaller values = scrolled back.
+        _scrollOffset = maxVal - value;
+        viewport()->update();
+    });
+}
+
+TerminalWidget::~TerminalWidget() = default;
+
+void TerminalWidget::Start(const QString& program, const QStringList& /*args*/)
+{
+    _recalcDimensions();
+    const std::string cmd = program.isEmpty() ?
+        std::string{} : program.toStdString();
+    _terminal->Start(cmd);
+    _cursorBlinkTimer->start();
+}
+
+// ── Painting ─────────────────────────────────────────────────────────────────
+
+void TerminalWidget::paintEvent(QPaintEvent* /*event*/)
+{
+    const auto& buf = _terminal->Buffer();
+    QPainter p(viewport());
+    p.setFont(_font);
+
+    const int sbRows = static_cast<int>(buf.Scrollback().size());
+    const int screenRows = buf.Rows();
+
+    // Fill background.
+    p.fillRect(viewport()->rect(), s_defaultBg);
+
+    const CursorPos cursorPos = buf.CursorPosition();
+
+    for (int row = 0; row < _rows; ++row) {
+        // Which buffer row are we drawing?
+        const int bufRow = row + _scrollOffset - sbRows;
+        // bufRow < 0  → scrollback row at index (sbRows + bufRow)
+        // bufRow >= 0 → screen row at bufRow
+
+        for (int col = 0; col < _cols; ++col) {
+            const TextCell* cell = nullptr;
+            TextCell dummy{};
+            if (bufRow < 0) {
+                const int sbIdx = sbRows + bufRow;
+                const auto& sbLine = buf.Scrollback()[sbIdx];
+                cell = (col < static_cast<int>(sbLine.size())) ? &sbLine[col] : &dummy;
+            } else if (bufRow < screenRows) {
+                cell = &buf.CellAt(bufRow, col);
+            } else {
+                cell = &dummy;
+            }
+
+            const bool isCursor = (_scrollOffset == 0) &&
+                                  (_cursorVisible) &&
+                                  (bufRow == cursorPos.row) &&
+                                  (col == cursorPos.col);
+
+            _paintCell(p, row, col, *cell, isCursor);
+        }
+    }
+}
+
+void TerminalWidget::_paintCell(QPainter& p, int row, int col,
+                                const TextCell& cell, bool isCursor) const
+{
+    const QRect rect(col * _cellW, row * _cellH,
+                     cell.wide ? _cellW * 2 : _cellW, _cellH);
+
+    const TextAttribute& attr = cell.attr;
+
+    // Resolve colors, applying inverse and invisible.
+    QColor fg = resolveColor(attr.fg, true);
+    QColor bg = resolveColor(attr.bg, false);
+
+    if (attr.inverse || isCursor) {
+        std::swap(fg, bg);
+    }
+    if (attr.invisible) {
+        fg = bg; // render invisible text as blank
+    }
+    if (attr.faint) {
+        fg.setAlpha(128);
+    }
+
+    // Background fill.
+    if (bg != s_defaultBg || isCursor) {
+        p.fillRect(rect, bg);
+    }
+
+    // Skip drawing space characters (just the background fill is enough).
+    if (cell.ch == U' ' || cell.ch == 0) {
+        if (attr.underline) {
+            p.setPen(fg);
+            p.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom());
+        }
+        return;
+    }
+
+    // Build font for this cell.
+    QFont f = _font;
+    if (attr.bold)   { f.setBold(true); }
+    if (attr.italic) { f.setItalic(true); }
+    p.setFont(f);
+    p.setPen(fg);
+
+    // Convert char32_t → QString for drawText.
+    const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&cell.ch), 1);
+    p.drawText(rect.left(), rect.top() + _baselineOffset, text);
+
+    // Decorations.
+    if (attr.underline) {
+        p.setPen(fg);
+        p.drawLine(rect.left(), rect.top() + _baselineOffset + 1,
+                   rect.right(), rect.top() + _baselineOffset + 1);
+    }
+    if (attr.strikethrough) {
+        const int midY = rect.top() + _baselineOffset / 2;
+        p.setPen(fg);
+        p.drawLine(rect.left(), midY, rect.right(), midY);
+    }
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+
+void TerminalWidget::keyPressEvent(QKeyEvent* event)
+{
+    // Scroll back to live view on any key.
+    if (_scrollOffset != 0) {
+        _scrollOffset = 0;
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    }
+
+    const Qt::KeyboardModifiers mod = event->modifiers();
+    const bool ctrl  = mod.testFlag(Qt::ControlModifier);
+    const bool shift = mod.testFlag(Qt::ShiftModifier);
+    const bool alt   = mod.testFlag(Qt::AltModifier);
+
+    QString seq;
+
+    // Ctrl+Shift+C / Ctrl+Shift+V — clipboard (not sent to terminal).
+    if (ctrl && shift && event->key() == Qt::Key_C) {
+        // TODO: copy selection
+        return;
+    }
+    if (ctrl && shift && event->key() == Qt::Key_V) {
+        // TODO: paste from clipboard
+        return;
+    }
+
+    // Ctrl+key → \x01–\x1A range.
+    if (ctrl && !shift && !alt) {
+        const int key = event->key();
+        if (key >= Qt::Key_A && key <= Qt::Key_Z) {
+            const char c = static_cast<char>(key - Qt::Key_A + 1);
+            seq = QString(QChar(c));
+        } else if (key == Qt::Key_BracketLeft)  { seq = QStringLiteral("\x1B"); }
+        else if (key == Qt::Key_Backslash)       { seq = QStringLiteral("\x1C"); }
+        else if (key == Qt::Key_BracketRight)    { seq = QStringLiteral("\x1D"); }
+        else if (key == Qt::Key_AsciiCircum)     { seq = QStringLiteral("\x1E"); }
+        else if (key == Qt::Key_Underscore)      { seq = QStringLiteral("\x1F"); }
+        else if (key == Qt::Key_At)              { seq = QString(1, QChar(0)); }
+    }
+
+    // Special keys.
+    if (seq.isEmpty()) {
+        switch (event->key()) {
+        case Qt::Key_Return:
+        case Qt::Key_Enter:     seq = QStringLiteral("\r"); break;
+        case Qt::Key_Backspace: seq = QStringLiteral("\x7F"); break;
+        case Qt::Key_Tab:
+            seq = shift ? QStringLiteral("\x1B[Z") : QStringLiteral("\t"); break;
+        case Qt::Key_Escape:    seq = QStringLiteral("\x1B"); break;
+        case Qt::Key_Up:        seq = QStringLiteral("\x1B[A"); break;
+        case Qt::Key_Down:      seq = QStringLiteral("\x1B[B"); break;
+        case Qt::Key_Right:     seq = QStringLiteral("\x1B[C"); break;
+        case Qt::Key_Left:      seq = QStringLiteral("\x1B[D"); break;
+        case Qt::Key_Home:      seq = QStringLiteral("\x1B[H"); break;
+        case Qt::Key_End:       seq = QStringLiteral("\x1B[F"); break;
+        case Qt::Key_PageUp:    seq = QStringLiteral("\x1B[5~"); break;
+        case Qt::Key_PageDown:  seq = QStringLiteral("\x1B[6~"); break;
+        case Qt::Key_Insert:    seq = QStringLiteral("\x1B[2~"); break;
+        case Qt::Key_Delete:    seq = QStringLiteral("\x1B[3~"); break;
+        case Qt::Key_F1:        seq = QStringLiteral("\x1BOP"); break;
+        case Qt::Key_F2:        seq = QStringLiteral("\x1BOQ"); break;
+        case Qt::Key_F3:        seq = QStringLiteral("\x1BOR"); break;
+        case Qt::Key_F4:        seq = QStringLiteral("\x1BOS"); break;
+        case Qt::Key_F5:        seq = QStringLiteral("\x1B[15~"); break;
+        case Qt::Key_F6:        seq = QStringLiteral("\x1B[17~"); break;
+        case Qt::Key_F7:        seq = QStringLiteral("\x1B[18~"); break;
+        case Qt::Key_F8:        seq = QStringLiteral("\x1B[19~"); break;
+        case Qt::Key_F9:        seq = QStringLiteral("\x1B[20~"); break;
+        case Qt::Key_F10:       seq = QStringLiteral("\x1B[21~"); break;
+        case Qt::Key_F11:       seq = QStringLiteral("\x1B[23~"); break;
+        case Qt::Key_F12:       seq = QStringLiteral("\x1B[24~"); break;
+        default: break;
+        }
+    }
+
+    if (seq.isEmpty()) {
+        const QString text = event->text();
+        if (!text.isEmpty()) {
+            // Prefix printable text with ESC if Alt is held.
+            seq = alt ? (QStringLiteral("\x1B") + text) : text;
+        }
+    }
+
+    if (!seq.isEmpty()) {
+        _terminal->SendInput(seq.toStdString());
+    }
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+
+void TerminalWidget::resizeEvent(QResizeEvent* event)
+{
+    QAbstractScrollArea::resizeEvent(event);
+    _recalcDimensions();
+}
+
+void TerminalWidget::_recalcDimensions()
+{
+    const int vw = viewport()->width();
+    const int vh = viewport()->height();
+
+    const int newCols = std::max(1, vw / _cellW);
+    const int newRows = std::max(1, vh / _cellH);
+
+    if (newCols != _cols || newRows != _rows) {
+        _cols = newCols;
+        _rows = newRows;
+        _terminal->Resize(_rows, _cols);
+    }
+
+    _updateScrollbar();
+}
+
+// ── Scrollbar ────────────────────────────────────────────────────────────────
+
+void TerminalWidget::_updateScrollbar()
+{
+    const int sbRows = static_cast<int>(_terminal->Buffer().Scrollback().size());
+    verticalScrollBar()->setRange(0, sbRows);
+    verticalScrollBar()->setValue(sbRows - _scrollOffset);
+    verticalScrollBar()->setPageStep(_rows);
+}
+
+// ── Wheel ────────────────────────────────────────────────────────────────────
+
+void TerminalWidget::wheelEvent(QWheelEvent* event)
+{
+    const int delta = event->angleDelta().y();
+    const int steps = delta / 40; // ~3 rows per notch
+    if (steps != 0) {
+        const int newVal = verticalScrollBar()->value() - steps;
+        verticalScrollBar()->setValue(
+            std::clamp(newVal, verticalScrollBar()->minimum(),
+                       verticalScrollBar()->maximum()));
+    }
+}
+
+// ── Focus ─────────────────────────────────────────────────────────────────────
+
+void TerminalWidget::focusInEvent(QFocusEvent* event)
+{
+    QAbstractScrollArea::focusInEvent(event);
+    _cursorVisible = true;
+    _cursorBlinkTimer->start();
+    _scheduleRepaint();
+}
+
+void TerminalWidget::focusOutEvent(QFocusEvent* event)
+{
+    QAbstractScrollArea::focusOutEvent(event);
+    _cursorBlinkTimer->stop();
+    _cursorVisible = true; // always show cursor when unfocused
+    _scheduleRepaint();
+}
+
+// ── Callbacks ─────────────────────────────────────────────────────────────────
+
+void TerminalWidget::_onRepaintNeeded()
+{
+    _scheduleRepaint();
+}
+
+void TerminalWidget::_onTitleChanged(const QString& title)
+{
+    // Propagate to parent window if possible.
+    if (auto* w = window()) {
+        w->setWindowTitle(title);
+    }
+}
+
+void TerminalWidget::_scheduleRepaint()
+{
+    if (!_repaintPending) {
+        _repaintPending = true;
+        _repaintCoalescer->start();
+    }
+}
+
+} // namespace KTerm

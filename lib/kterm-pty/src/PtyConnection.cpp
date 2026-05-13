@@ -63,7 +63,14 @@ namespace KTerm
             {
                 ::close(slaveFd);
             }
-            execl(command.c_str(), command.c_str(), nullptr);
+            const char* shell = command.empty() ? nullptr : command.c_str();
+            if (!shell) {
+                shell = getenv("SHELL");
+            }
+            if (!shell || shell[0] == '\0') {
+                shell = "/bin/bash";
+            }
+            execl(shell, shell, nullptr);
             _exit(1);
         }
 

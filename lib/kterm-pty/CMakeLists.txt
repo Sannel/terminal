@@ -3,7 +3,12 @@ cmake_minimum_required(VERSION 3.21)
 find_package(Qt6 REQUIRED COMPONENTS Core)
 
 add_library(kterm-pty STATIC
+    include/PtyConnection.hpp
     src/PtyConnection.cpp
+)
+
+set_target_properties(kterm-pty PROPERTIES
+    AUTOMOC ON
 )
 
 target_include_directories(kterm-pty

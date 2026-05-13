@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.21)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
-find_package(KF6 REQUIRED COMPONENTS CoreAddons I18n)
+find_package(KF6 REQUIRED COMPONENTS CoreAddons I18n XmlGui)
 
 add_executable(kterm
     src/main.cpp
 )
+
+set_target_properties(kterm PROPERTIES AUTOMOC ON)
 
 target_link_libraries(kterm
     PRIVATE
@@ -14,10 +16,8 @@ target_link_libraries(kterm
         Qt6::Widgets
         KF6::CoreAddons
         KF6::I18n
-        kterm-vt
-        kterm-pty
-        kterm-core
-        kterm-settings
+        KF6::XmlGui
+        kterm-widget
 )
 
 target_compile_features(kterm PRIVATE cxx_std_20)

@@ -1,10 +1,12 @@
 // Copyright (c) Sannel LLC.
 // Licensed under the MIT license.
 
+#include "TerminalWidget.hpp"
+
 #include <KAboutData>
 #include <KLocalizedString>
 #include <QApplication>
-#include <QMainWindow>
+#include <KMainWindow>
 
 int main(int argc, char* argv[])
 {
@@ -20,10 +22,16 @@ int main(int argc, char* argv[])
     about.addAuthor(i18n("Sannel Contributors"));
     KAboutData::setApplicationData(about);
 
-    QMainWindow window;
+    KMainWindow window;
     window.setWindowTitle(i18n("KTerm"));
-    window.resize(1024, 768);
+    window.resize(900, 600);
+
+    auto* term = new KTerm::TerminalWidget(&window);
+    window.setCentralWidget(term);
     window.show();
+
+    term->Start();
 
     return app.exec();
 }
+
