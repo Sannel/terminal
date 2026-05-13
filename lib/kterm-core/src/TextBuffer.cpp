@@ -31,6 +31,10 @@ namespace KTerm
             row.resize(static_cast<size_t>(newCols), _blankCell);
         }
 
+        // Update _cols now so _blankRow() produces rows of the correct width
+        // when we add new rows below.
+        _cols = newCols;
+
         // Add or remove rows at the bottom.
         while (static_cast<int>(_screen.size()) < newRows)
         {
@@ -39,7 +43,6 @@ namespace KTerm
         _screen.resize(static_cast<size_t>(newRows), _blankRow());
 
         _rows = newRows;
-        _cols = newCols;
         _scrollTop = 0;
         _scrollBottom = _rows - 1;
         _clampCursor();
