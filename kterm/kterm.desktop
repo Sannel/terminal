@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=KTerm
+GenericName=Terminal Emulator
+Comment=A modern terminal emulator for KDE Plasma
+Exec=kterm
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+Keywords=terminal;console;shell;
+StartupNotify=true
+StartupWMClass=kterm

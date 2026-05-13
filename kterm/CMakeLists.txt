@@ -28,3 +28,4 @@ target_link_libraries(kterm
 target_compile_features(kterm PRIVATE cxx_std_20)
 
 install(TARGETS kterm DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES kterm.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)

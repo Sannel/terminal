@@ -1,5 +1,11 @@
 # KTerm — Windows Terminal Rebuilt for KDE/Plasma
 
+> **Current status (May 2026):** Phases 1–9 complete. The terminal runs, renders,
+> and handles keyboard input. A tabbed `KXmlGuiWindow` with JSON-backed settings
+> and multiple built-in color schemes is in place.
+>
+> **To run:** `cmake -S . -B build && cmake --build build && ./build/kterm/kterm`
+
 This document describes the plan to port/rebuild Windows Terminal as a native
 KDE/Plasma application on Linux (targeting Kubuntu 25.10+).
 
@@ -9,6 +15,29 @@ Wine has `windows.ui.xaml` stubs but no real XAML/WinUI 3 rendering. The WinRT
 activation infrastructure, XAML Islands, Windows.UI.Composition, and ConPTY
 are all unimplemented or non-functional in Wine as of 2026. Running Windows
 Terminal under Wine is not a viable path.
+
+## Completed Phases
+
+| Phase | Component | Description | Status |
+|-------|-----------|-------------|--------|
+| 1 | Scaffolding | CMake root, ECM, Qt6+KF6 deps | ✅ Done |
+| 2 | `kterm-vt` | VT state machine ported (`wchar_t→char32_t`, no Win32) | ✅ Done |
+| 3 | `kterm-pty` | POSIX PTY (`openpty`/`forkpty` + `QSocketNotifier`) | ✅ Done |
+| 4 | `kterm-core` | `TextBuffer`, `KTerminalDispatch`, `KTerminal` | ✅ Done |
+| 5/6 | `kterm-widget` | `QPainter` cell renderer, keyboard, scrollback, cursor blink | ✅ Done |
+| 7 | `kterm-settings` | JSON profiles + color schemes (`~/.config/kterm/settings.json`) | ✅ Done |
+| 8/9 | `kterm` app | Tabbed `KXmlGuiWindow`, KDE actions, window title propagation | ✅ Done |
+
+## Planned Phases
+
+| Phase | Component | Description |
+|-------|-----------|-------------|
+| 10 | Qt RHI renderer | Glyph atlas + GLSL shaders replacing QPainter (optional optimisation) |
+| 11 | Split panes | `QSplitter`-based pane management |
+| 12 | Preferences UI | `KConfigDialog` for profiles + color schemes |
+| 13 | KIO / SSH | Remote PTY connections via KIO |
+| 14 | Flatpak/AppStream | Packaging and distribution |
+
 
 ## Architecture — Layer-by-Layer Mapping
 
