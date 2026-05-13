@@ -1,0 +1,4 @@
+kterm-vt_autogen/timestamp: \
+	/home/adam/source/Sannel/terminal/lib/kterm-vt/CMakeLists.txt \
+	/home/adam/source/Sannel/terminal/lib/kterm-vt/src/stateMachine.cpp \
+	/usr/bin/cmake

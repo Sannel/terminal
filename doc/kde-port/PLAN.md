@@ -4,7 +4,7 @@
 > and handles keyboard input. A tabbed `KXmlGuiWindow` with JSON-backed settings
 > and multiple built-in color schemes is in place.
 >
-> **To run:** `cmake -S . -B build && cmake --build build && ./build/kterm/kterm`
+> **To run:** `cmake -S . -B build && cmake --build build && ./build/lterm/lterm`
 
 This document describes the plan to port/rebuild Windows Terminal as a native
 KDE/Plasma application on Linux (targeting Kubuntu 25.10+).
@@ -21,12 +21,12 @@ Terminal under Wine is not a viable path.
 | Phase | Component | Description | Status |
 |-------|-----------|-------------|--------|
 | 1 | Scaffolding | CMake root, ECM, Qt6+KF6 deps | ✅ Done |
-| 2 | `kterm-vt` | VT state machine ported (`wchar_t→char32_t`, no Win32) | ✅ Done |
-| 3 | `kterm-pty` | POSIX PTY (`openpty`/`forkpty` + `QSocketNotifier`) | ✅ Done |
-| 4 | `kterm-core` | `TextBuffer`, `KTerminalDispatch`, `KTerminal` | ✅ Done |
-| 5/6 | `kterm-widget` | `QPainter` cell renderer, keyboard, scrollback, cursor blink | ✅ Done |
-| 7 | `kterm-settings` | JSON profiles + color schemes (`~/.config/kterm/settings.json`) | ✅ Done |
-| 8/9 | `kterm` app | Tabbed `KXmlGuiWindow`, KDE actions, window title propagation | ✅ Done |
+| 2 | `lterm-vt` | VT state machine ported (`wchar_t→char32_t`, no Win32) | ✅ Done |
+| 3 | `lterm-pty` | POSIX PTY (`openpty`/`forkpty` + `QSocketNotifier`) | ✅ Done |
+| 4 | `lterm-core` | `TextBuffer`, `PLACEHOLDER_DISPATCH`, `PLACEHOLDER_TERMINAL` | ✅ Done |
+| 5/6 | `lterm-widget` | `QPainter` cell renderer, keyboard, scrollback, cursor blink | ✅ Done |
+| 7 | `lterm-settings` | JSON profiles + color schemes (`~/.config/lterm/settings.json`) | ✅ Done |
+| 8/9 | `lterm` app | Tabbed `KXmlGuiWindow`, KDE actions, window title propagation | ✅ Done |
 
 ## Planned Phases
 
@@ -43,15 +43,15 @@ Terminal under Wine is not a viable path.
 
 | WT Layer                 | Technology          | KTerm Equivalent        | Technology         |
 |--------------------------|---------------------|-------------------------|--------------------|
-| `terminal/parser`        | C++20 (wchar_t)     | `lib/kterm-vt`          | C++20 (char32_t)   |
-| `buffer/out`             | C++20 + Win32 types | `lib/kterm-vt`          | C++20              |
-| `TerminalCore`           | C++/WinRT           | `lib/kterm-core`        | C++20 + Qt signals |
-| `TerminalConnection`     | C++/WinRT + ConPTY  | `lib/kterm-pty`         | POSIX openpty      |
-| `renderer/atlas`         | D3D11 + DirectWrite | `lib/kterm-render`      | Qt RHI + HarfBuzz  |
-| `TerminalControl`        | XAML / WinRT        | `lib/kterm-widget`      | QML / Qt Quick     |
-| `TerminalSettingsModel`  | JSON + WinRT        | `lib/kterm-settings`    | JSON + KConfig     |
-| `TerminalApp`            | XAML / WinUI 3      | `kterm-app` (QML)       | Qt Quick           |
-| `WindowsTerminal`        | Win32 + XAML Islands| `kterm`                 | KMainWindow        |
+| `terminal/parser`        | C++20 (wchar_t)     | `lib/lterm-vt`          | C++20 (char32_t)   |
+| `buffer/out`             | C++20 + Win32 types | `lib/lterm-vt`          | C++20              |
+| `TerminalCore`           | C++/WinRT           | `lib/lterm-core`        | C++20 + Qt signals |
+| `TerminalConnection`     | C++/WinRT + ConPTY  | `lib/lterm-pty`         | POSIX openpty      |
+| `renderer/atlas`         | D3D11 + DirectWrite | `lib/lterm-render`      | Qt RHI + HarfBuzz  |
+| `TerminalControl`        | XAML / WinRT        | `lib/lterm-widget`      | QML / Qt Quick     |
+| `TerminalSettingsModel`  | JSON + WinRT        | `lib/lterm-settings`    | JSON + KConfig     |
+| `TerminalApp`            | XAML / WinUI 3      | `lterm-app` (QML)       | Qt Quick           |
+| `WindowsTerminal`        | Win32 + XAML Islands| `lterm`                 | KMainWindow        |
 
 ## Technology Stack
 
@@ -68,14 +68,14 @@ Terminal under Wine is not a viable path.
 ## Project Structure
 
 ```
-kterm/                          (main window — KMainWindow)
+lterm/                          (main window — KMainWindow)
 lib/
-  kterm-vt/                     (VT state machine + text buffer)
-  kterm-pty/                    (POSIX PTY connections)
-  kterm-core/                   (Terminal class: parser ↔ buffer ↔ input)
-  kterm-render/                 (Qt RHI glyph atlas renderer)
-  kterm-widget/                 (QML TerminalView item)
-  kterm-settings/               (JSON profiles, color schemes, key bindings)
+  lterm-vt/                     (VT state machine + text buffer)
+  lterm-pty/                    (POSIX PTY connections)
+  lterm-core/                   (Terminal class: parser ↔ buffer ↔ input)
+  lterm-render/                 (Qt RHI glyph atlas renderer)
+  lterm-widget/                 (QML TerminalView item)
+  lterm-settings/               (JSON profiles, color schemes, key bindings)
 app/                            (tabs, panes, command palette — QML)
 doc/kde-port/                   (this document + specs)
 cmake/                          (CMake helper modules)
@@ -88,7 +88,7 @@ cmake/                          (CMake helper modules)
 - KDE app skeleton (KMainWindow, KAboutData)
 - CI pipeline setup
 
-### Phase 2 — VT Parser + Text Buffer (`lib/kterm-vt`)
+### Phase 2 — VT Parser + Text Buffer (`lib/lterm-vt`)
 Port `src/terminal/parser/stateMachine.{hpp,cpp}` and supporting types.
 Key changes from Windows source:
 - `wchar_t` → `char32_t` (UTF-32 code points instead of UTF-16)
@@ -99,35 +99,35 @@ Key changes from Windows source:
 - Keep portable `til::enumset`, `til::small_vector` (zero Windows deps)
 - Port `src/buffer/out/textBuffer`, `Row`, `TextAttribute`, `TextColor`
 
-### Phase 3 — PTY Connection (`lib/kterm-pty`)
+### Phase 3 — PTY Connection (`lib/lterm-pty`)
 - `PtyConnection`: `openpty`/`forkpty`, async reads via `QSocketNotifier`
 - `EchoConnection`: loopback for testing
 - `ITerminalConnection` interface (connect/send/receive/resize/close)
 - Shell detection from `$SHELL` env
 - Resize: `TIOCSWINSZ` ioctl + `SIGWINCH`
 
-### Phase 4 — Terminal Core (`lib/kterm-core`)
-- `KTerminal` class (mirrors WT `Terminal.cpp`)
+### Phase 4 — Terminal Core (`lib/lterm-core`)
+- `PLACEHOLDER_TERMINAL` class (mirrors WT `Terminal.cpp`)
 - Wire VT state machine → text buffer
 - Input: Qt key events → VT byte sequences
 - Selection model (linear + block)
 - Scrollback management
 
-### Phase 5 — GPU Renderer (`lib/kterm-render`)
+### Phase 5 — GPU Renderer (`lib/lterm-render`)
 - Qt RHI renderer (OpenGL/Vulkan backend)
 - Glyph atlas (GPU texture, mirroring WT AtlasEngine/BackendD3D)
 - HarfBuzz text shaping, FreeType rasterization
 - GLSL shaders (vertex + fragment)
 - Fallback: `QPainter` software renderer
 
-### Phase 6 — Terminal Widget (`lib/kterm-widget`)
+### Phase 6 — Terminal Widget (`lib/lterm-widget`)
 - `TerminalView` as `QQuickItem`
-- Owns `KTerminal` + renderer + PTY connection
+- Owns `PLACEHOLDER_TERMINAL` + renderer + PTY connection
 - Mouse/keyboard input routing
 - Scrollbar, search overlay
 - Accessibility (AT-SPI via `QAccessible`)
 
-### Phase 7 — Settings Model (`lib/kterm-settings`)
+### Phase 7 — Settings Model (`lib/lterm-settings`)
 - `settings.json` (compatible with WT format where practical)
 - Profile inheritance: base layer → named profile → session override
 - Color schemes (port WT defaults: Campbell, One Half, Solarized, Tango, Vintage)
@@ -140,7 +140,7 @@ Key changes from Windows source:
 - Command palette: QML overlay with fuzzy search
 - Settings editor UI
 
-### Phase 9 — Main Window & KDE Integration (`kterm/`)
+### Phase 9 — Main Window & KDE Integration (`lterm/`)
 - `KMainWindow` + `KAboutData`
 - Quake/drop-down mode via `KWindowSystem`
 - System tray (`KStatusNotifierItem`)

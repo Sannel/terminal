@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=LTerm
+GenericName=Terminal Emulator
+Comment=Linux Terminal — a modern terminal for KDE Plasma
+Exec=lterm
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+Keywords=terminal;console;shell;
+StartupNotify=true
+StartupWMClass=lterm

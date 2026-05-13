@@ -13,11 +13,11 @@
 
 | Layer | Status | Notes |
 |-------|--------|-------|
-| VT parser (`kterm-vt`) | ✅ Done | Ported from `microsoft/terminal` — `wchar_t→char32_t`, no Win32 |
-| PTY backend (`kterm-pty`) | ✅ Done | POSIX `openpty`/`forkpty` + `QSocketNotifier` |
-| Terminal core (`kterm-core`) | ✅ Done | `TextBuffer`, `KTerminalDispatch` (CSI/SGR/OSC), `KTerminal` |
-| Widget renderer (`kterm-widget`) | ✅ Done | `QPainter` cell renderer, keyboard input, scrollback, cursor blink |
-| Settings model (`kterm-settings`) | ✅ Done | JSON profiles + color schemes (`~/.config/kterm/settings.json`) |
+| VT parser (`lterm-vt`) | ✅ Done | Ported from `microsoft/terminal` — `wchar_t→char32_t`, no Win32 |
+| PTY backend (`lterm-pty`) | ✅ Done | POSIX `openpty`/`forkpty` + `QSocketNotifier` |
+| Terminal core (`lterm-core`) | ✅ Done | `TextBuffer`, `PLACEHOLDER_DISPATCH` (CSI/SGR/OSC), `PLACEHOLDER_TERMINAL` |
+| Widget renderer (`lterm-widget`) | ✅ Done | `QPainter` cell renderer, keyboard input, scrollback, cursor blink |
+| Settings model (`lterm-settings`) | ✅ Done | JSON profiles + color schemes (`~/.config/lterm/settings.json`) |
 | App shell | ✅ Done | `KXmlGuiWindow` + `QTabWidget`, full KDE action/shortcut integration |
 | Qt RHI GPU renderer | 🔲 Planned | Phase 11 — glyph atlas, GLSL shaders |
 | QML/Kirigami UI | 🔲 Planned | Phase 12 — optional Wayland-native UI |
@@ -42,8 +42,8 @@ sudo apt install \
 ### Build
 
 ```bash
-git clone https://github.com/Sannel/terminal.git kterm
-cd kterm
+git clone https://github.com/Sannel/terminal.git lterm
+cd lterm
 git checkout kde-plasma-port
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -53,7 +53,7 @@ cmake --build build --parallel $(nproc)
 ### Run
 
 ```bash
-./build/kterm/kterm
+./build/lterm/lterm
 ```
 
 ---
@@ -61,31 +61,31 @@ cmake --build build --parallel $(nproc)
 ## Architecture
 
 ```
-kterm (executable)
-├── lib/kterm-widget    — TerminalWidget (QPainter renderer, keyboard, scroll)
-│   ├── lib/kterm-core  — KTerminal, TextBuffer, KTerminalDispatch
-│   │   ├── lib/kterm-vt   — VT state machine (ported from microsoft/terminal)
-│   │   └── lib/kterm-pty  — POSIX PTY via openpty + QSocketNotifier
-│   └── lib/kterm-settings — JSON settings: profiles, color schemes
+lterm (executable)
+├── lib/lterm-widget    — TerminalWidget (QPainter renderer, keyboard, scroll)
+│   ├── lib/lterm-core  — PLACEHOLDER_TERMINAL, TextBuffer, PLACEHOLDER_DISPATCH
+│   │   ├── lib/lterm-vt   — VT state machine (ported from microsoft/terminal)
+│   │   └── lib/lterm-pty  — POSIX PTY via openpty + QSocketNotifier
+│   └── lib/lterm-settings — JSON settings: profiles, color schemes
 ```
 
 ### Key classes
 
 | Class | Location | Purpose |
 |-------|----------|---------|
-| `KTerm::StateMachine` | `kterm-vt` | VT/ANSI parser state machine |
-| `KTerm::KTerminalDispatch` | `kterm-core` | Implements `IStateMachineEngine`; handles CSI, SGR, OSC |
-| `KTerm::TextBuffer` | `kterm-core` | 2D cell grid + scrollback + cursor |
-| `KTerm::KTerminal` | `kterm-core` | Owns PTY + state machine + buffer; emits Qt signals |
-| `KTerm::TerminalWidget` | `kterm-widget` | `QAbstractScrollArea`; renders buffer, handles keyboard |
-| `KTerm::KTermSettings` | `kterm-settings` | Singleton; loads/saves profiles and color schemes |
-| `KTerm::MainWindow` | `kterm` app | `KXmlGuiWindow` with tabbed terminal interface |
+| `LTERM_NS::StateMachine` | `lterm-vt` | VT/ANSI parser state machine |
+| `LTERM_NS::PLACEHOLDER_DISPATCH` | `lterm-core` | Implements `IStateMachineEngine`; handles CSI, SGR, OSC |
+| `LTERM_NS::TextBuffer` | `lterm-core` | 2D cell grid + scrollback + cursor |
+| `LTERM_NS::PLACEHOLDER_TERMINAL` | `lterm-core` | Owns PTY + state machine + buffer; emits Qt signals |
+| `LTERM_NS::TerminalWidget` | `lterm-widget` | `QAbstractScrollArea`; renders buffer, handles keyboard |
+| `LTERM_NS::PLACEHOLDER_SETTINGS` | `lterm-settings` | Singleton; loads/saves profiles and color schemes |
+| `LTERM_NS::MainWindow` | `lterm` app | `KXmlGuiWindow` with tabbed terminal interface |
 
 ---
 
 ## Settings
 
-Settings are stored in `~/.config/kterm/settings.json`. The file is created
+Settings are stored in `~/.config/lterm/settings.json`. The file is created
 automatically on first run with defaults.
 
 ```json
@@ -128,7 +128,7 @@ automatically on first run with defaults.
 
 ## License
 
-The VT parser code in `lib/kterm-vt` is derived from
+The VT parser code in `lib/lterm-vt` is derived from
 [microsoft/terminal](https://github.com/microsoft/terminal) and carries the
 original MIT license. All new KDE/Qt port code is © 2025 Sannel LLC, also
 MIT-licensed.

@@ -30,6 +30,8 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Network
     DBus
+    OpenGL
+    OpenGLWidgets
 )
 qt_standard_project_setup()
 
@@ -50,9 +52,9 @@ find_package(Qt6 COMPONENTS WaylandClient)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
 
-add_subdirectory(lib/kterm-vt)
-add_subdirectory(lib/kterm-pty)
-add_subdirectory(lib/kterm-core)
-add_subdirectory(lib/kterm-settings)
-add_subdirectory(lib/kterm-widget)
-add_subdirectory(kterm)
+add_subdirectory(lib/lterm-vt)
+add_subdirectory(lib/lterm-pty)
+add_subdirectory(lib/lterm-core)
+add_subdirectory(lib/lterm-settings)
+add_subdirectory(lib/lterm-widget)
+add_subdirectory(lterm)
