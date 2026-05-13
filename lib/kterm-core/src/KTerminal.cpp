@@ -41,11 +41,12 @@ namespace KTerm
         _pty->Close();
     }
 
-    bool KTerminal::Start(const std::string& command)
+    bool KTerminal::Start(const std::string& command, const std::string& workingDir)
     {
         return _pty->Start(command,
                            static_cast<unsigned short>(_buffer->Rows()),
-                           static_cast<unsigned short>(_buffer->Cols()));
+                           static_cast<unsigned short>(_buffer->Cols()),
+                           workingDir);
     }
 
     void KTerminal::SendInput(std::string_view data)

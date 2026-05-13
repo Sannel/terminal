@@ -31,7 +31,8 @@ public:
     ~TerminalWidget() override;
 
     /** Start the terminal running the given program (default: $SHELL). */
-    void Start(const QString& program = {}, const QStringList& args = {});
+    void Start(const QString& program = {}, const QStringList& args = {},
+               const QString& workingDir = {});
 
     /** Apply a full profile (font + color scheme). */
     void applyProfile(const Profile& profile, const ColorScheme& scheme);

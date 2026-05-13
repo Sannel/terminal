@@ -1,0 +1,2 @@
+/usr/bin/ar qc libkterm-settings.a "CMakeFiles/kterm-settings.dir/kterm-settings_autogen/mocs_compilation.cpp.o" "CMakeFiles/kterm-settings.dir/src/ColorScheme.cpp.o" "CMakeFiles/kterm-settings.dir/src/Profile.cpp.o" "CMakeFiles/kterm-settings.dir/src/KTermSettings.cpp.o"
+/usr/bin/ranlib libkterm-settings.a

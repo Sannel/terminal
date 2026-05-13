@@ -110,12 +110,13 @@ void TerminalWidget::setColorScheme(const ColorScheme& scheme)
     _scheduleRepaint();
 }
 
-void TerminalWidget::Start(const QString& program, const QStringList& /*args*/)
+void TerminalWidget::Start(const QString& program, const QStringList& /*args*/,
+                           const QString& workingDir)
 {
     _recalcDimensions();
-    const std::string cmd = program.isEmpty() ?
-        std::string{} : program.toStdString();
-    _terminal->Start(cmd);
+    const std::string cmd = program.isEmpty() ? std::string{} : program.toStdString();
+    const std::string cwd = workingDir.isEmpty() ? std::string{} : workingDir.toStdString();
+    _terminal->Start(cmd, cwd);
     _cursorBlinkTimer->start();
 }
 

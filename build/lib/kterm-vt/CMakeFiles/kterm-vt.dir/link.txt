@@ -1,0 +1,2 @@
+/usr/bin/ar qc libkterm-vt.a "CMakeFiles/kterm-vt.dir/kterm-vt_autogen/mocs_compilation.cpp.o" "CMakeFiles/kterm-vt.dir/src/stateMachine.cpp.o"
+/usr/bin/ranlib libkterm-vt.a

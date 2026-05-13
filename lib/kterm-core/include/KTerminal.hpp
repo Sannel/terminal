@@ -26,8 +26,10 @@ namespace KTerm
         ~KTerminal() override;
 
         // Launch a shell (or other command) in the PTY.
+        // workingDir: initial CWD (empty = inherit process CWD).
         // Returns false if the PTY could not be started.
-        bool Start(const std::string& command = "/bin/bash");
+        bool Start(const std::string& command = "/bin/bash",
+                   const std::string& workingDir = {});
 
         // Send user input (keyboard / paste) to the PTY.
         void SendInput(std::string_view data);

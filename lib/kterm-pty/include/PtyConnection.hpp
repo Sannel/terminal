@@ -24,8 +24,10 @@ namespace KTerm
         ~PtyConnection() override;
 
         // Launch the specified command (e.g. "/bin/bash") in the PTY.
+        // workingDir: initial working directory (empty = inherit CWD).
         // Returns true on success.
-        bool Start(const std::string& command, unsigned short rows, unsigned short cols);
+        bool Start(const std::string& command, unsigned short rows, unsigned short cols,
+                   const std::string& workingDir = {});
 
         // ITerminalConnection
         void WriteInput(std::string_view data) override;

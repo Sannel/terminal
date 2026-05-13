@@ -1,0 +1,2 @@
+/usr/bin/ar qc libkterm-core.a "CMakeFiles/kterm-core.dir/kterm-core_autogen/mocs_compilation.cpp.o" "CMakeFiles/kterm-core.dir/src/TextBuffer.cpp.o" "CMakeFiles/kterm-core.dir/src/KTerminalDispatch.cpp.o" "CMakeFiles/kterm-core.dir/src/KTerminal.cpp.o"
+/usr/bin/ranlib libkterm-core.a

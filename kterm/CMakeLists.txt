@@ -7,6 +7,8 @@ add_executable(kterm
     src/main.cpp
     src/MainWindow.hpp
     src/MainWindow.cpp
+    src/SettingsDialog.hpp
+    src/SettingsDialog.cpp
 )
 
 set_target_properties(kterm PROPERTIES AUTOMOC ON)

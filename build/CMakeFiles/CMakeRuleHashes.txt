@@ -1,0 +1,16 @@
+# Hashes of file build rules.
+f8096892c43c7f7e14dac3218015e377 CMakeFiles/fetch-translations
+b87e59e1f78bb285dfa8a29a6331a09f CMakeFiles/uninstall
+2e81ec3132235f09bb8c5f5821ed6e3c kterm/CMakeFiles/kterm_autogen
+d0c32695aaa6d1efe67e4a8c3e35366b kterm/kterm_autogen/timestamp
+3e4f97a306a152b90b1639e9104f18af lib/kterm-core/CMakeFiles/kterm-core_autogen
+a70fb5aa48a847a61731cf9db68a144f lib/kterm-core/kterm-core_autogen/timestamp
+2200afee034ed12c7d8ce52c9058bcab lib/kterm-pty/CMakeFiles/kterm-pty_autogen
+9683d23a1b1b001344e189abe44eec6f lib/kterm-pty/kterm-pty_autogen/timestamp
+0a252d0492e61ff20cd8d18c5ce7de44 lib/kterm-settings/CMakeFiles/kterm-settings_autogen
+dd1d491bb07a20f6011e87d294d22d6b lib/kterm-settings/kterm-settings_autogen/timestamp
+8cc4878c7950dd7cc3ff68475f57d8d4 lib/kterm-vt/CMakeFiles/kterm-vt_autogen
+6d9d6463d1e87f7080fef2e41827a435 lib/kterm-vt/kterm-vt_autogen/timestamp
+9dab703d8af9697c9e5691eeea38069e lib/kterm-widget/CMakeFiles/kterm-widget_autogen
+72ca2114f433cc285f8a2d9b8f4f236a lib/kterm-widget/kterm-widget_autogen/timestamp
+d2e29695d55e251a37a81bb1001a3027 releaseme

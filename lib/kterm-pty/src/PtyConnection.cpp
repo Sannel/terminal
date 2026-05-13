@@ -26,7 +26,8 @@ namespace KTerm
         Close();
     }
 
-    bool PtyConnection::Start(const std::string& command, unsigned short rows, unsigned short cols)
+    bool PtyConnection::Start(const std::string& command, unsigned short rows, unsigned short cols,
+                              const std::string& workingDir)
     {
         int masterFd = -1;
         int slaveFd = -1;
@@ -69,6 +70,9 @@ namespace KTerm
             }
             if (!shell || shell[0] == '\0') {
                 shell = "/bin/bash";
+            }
+            if (!workingDir.empty()) {
+                chdir(workingDir.c_str());
             }
             execl(shell, shell, nullptr);
             _exit(1);

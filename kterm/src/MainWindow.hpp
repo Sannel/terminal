@@ -8,11 +8,18 @@
 
 #include <KXmlGuiWindow>
 #include <QTabWidget>
+#include <QToolButton>
 
 namespace KTerm {
 
+class SettingsDialog;
+
 /**
- * MainWindow — top-level KDE window with a tab bar for multiple terminals.
+ * MainWindow — KDE main window with a tab bar for multiple terminals.
+ *
+ * No menu bar. A corner widget on the tab bar provides:
+ *   [+▾] — new tab (left-click: default profile; arrow: choose shell/profile)
+ *   [≡]  — app menu (settings, about, quit)
  */
 class MainWindow : public KXmlGuiWindow
 {
@@ -23,18 +30,29 @@ public:
 
 public slots:
     void newTab(const QString& profileName = {});
+    void newTabWithShell(const QString& shellPath);
     void closeCurrentTab();
 
 private slots:
-    void _onTabTitleChanged(const QString& title);
     void _onTabCloseRequested(int index);
+    void _openSettings();
 
 private:
-    TerminalWidget* _currentTerminal() const;
-    TerminalWidget* _terminalAt(int index) const;
     void _setupActions();
+    void _setupCornerWidget();
 
-    QTabWidget* _tabs = nullptr;
+    QMenu* _buildNewTabMenu();
+    void   _populateNewTabMenu(QMenu* menu);
+    QMenu* _buildAppMenu();
+
+    void _startTab(const Profile& profile, const ColorScheme& scheme);
+
+    TerminalWidget* _currentTerminal() const;
+
+    QTabWidget*  _tabs      = nullptr;
+    QToolButton* _newTabBtn = nullptr;
+    QToolButton* _menuBtn   = nullptr;
 };
 
 } // namespace KTerm
+

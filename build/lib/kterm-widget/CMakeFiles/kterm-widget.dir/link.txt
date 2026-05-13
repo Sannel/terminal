@@ -1,0 +1,2 @@
+/usr/bin/ar qc libkterm-widget.a "CMakeFiles/kterm-widget.dir/kterm-widget_autogen/mocs_compilation.cpp.o" "CMakeFiles/kterm-widget.dir/src/TerminalWidget.cpp.o"
+/usr/bin/ranlib libkterm-widget.a
