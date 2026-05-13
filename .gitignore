@@ -294,3 +294,7 @@ Makefile
 *.cmake
 !CMakeLists.txt
 .qt/
+
+# Linux CMake build artifacts
+build/kterm/
+build/lib/
