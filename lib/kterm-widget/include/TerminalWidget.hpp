@@ -2,6 +2,8 @@
 
 #include "KTerminal.hpp"
 #include "TextBuffer.hpp"
+#include "ColorScheme.hpp"
+#include "Profile.hpp"
 
 #include <QAbstractScrollArea>
 #include <QFont>
@@ -31,7 +33,16 @@ public:
     /** Start the terminal running the given program (default: $SHELL). */
     void Start(const QString& program = {}, const QStringList& args = {});
 
+    /** Apply a full profile (font + color scheme). */
+    void applyProfile(const Profile& profile, const ColorScheme& scheme);
+
+    /** Replace just the color scheme. */
+    void setColorScheme(const ColorScheme& scheme);
+
     KTerminal* terminal() const { return _terminal; }
+
+signals:
+    void titleChanged(const QString& title);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -47,12 +58,15 @@ private:
     void _scheduleRepaint();
     void _updateScrollbar();
     void _recalcDimensions();
+    void _applyFont(const QFont& font);
 
     /** Paint a single cell at (col, row) in viewport coords using the given QPainter. */
     void _paintCell(QPainter& p, int row, int col, const TextCell& cell,
                     bool isCursor) const;
 
     KTerminal* _terminal = nullptr;
+
+    ColorScheme  _colorScheme;
 
     QFont        _font;
     QFontMetricsF _fm;

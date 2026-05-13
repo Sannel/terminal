@@ -12,46 +12,17 @@
 
 namespace KTerm {
 
-// ── ANSI 16-color palette (xterm defaults) ───────────────────────────────────
+// ── 256-color cube (indices 16-255) ──────────────────────────────────────────
 
-static const QColor s_ansiColors[16] = {
-    // Normal (0-7)
-    QColor(0x00, 0x00, 0x00), // Black
-    QColor(0x80, 0x00, 0x00), // Red
-    QColor(0x00, 0x80, 0x00), // Green
-    QColor(0x80, 0x80, 0x00), // Yellow
-    QColor(0x00, 0x00, 0x80), // Blue
-    QColor(0x80, 0x00, 0x80), // Magenta
-    QColor(0x00, 0x80, 0x80), // Cyan
-    QColor(0xC0, 0xC0, 0xC0), // White
-    // Bright (8-15)
-    QColor(0x80, 0x80, 0x80), // Bright Black
-    QColor(0xFF, 0x00, 0x00), // Bright Red
-    QColor(0x00, 0xFF, 0x00), // Bright Green
-    QColor(0xFF, 0xFF, 0x00), // Bright Yellow
-    QColor(0x00, 0x00, 0xFF), // Bright Blue
-    QColor(0xFF, 0x00, 0xFF), // Bright Magenta
-    QColor(0x00, 0xFF, 0xFF), // Bright Cyan
-    QColor(0xFF, 0xFF, 0xFF), // Bright White
-};
-
-// Default terminal fg/bg.
-static const QColor s_defaultFg{ 0xCC, 0xCC, 0xCC };
-static const QColor s_defaultBg{ 0x1E, 0x1E, 0x1E };
-
-// ── xterm 256-color table ────────────────────────────────────────────────────
-
-static QColor colorFrom256(uint8_t idx)
+static QColor colorFrom256(const ColorScheme& scheme, uint8_t idx)
 {
     if (idx < 16) {
-        return s_ansiColors[idx];
+        return scheme.ansiColors[idx];
     }
     if (idx >= 232) {
-        // Grayscale ramp
         const int v = 8 + (idx - 232) * 10;
         return QColor(v, v, v);
     }
-    // 6×6×6 color cube
     idx -= 16;
     const int b = idx % 6;
     const int g = (idx / 6) % 6;
@@ -60,37 +31,17 @@ static QColor colorFrom256(uint8_t idx)
     return QColor(f(r), f(g), f(b));
 }
 
-static QColor resolveColor(const TextColor& tc, bool isFg)
-{
-    switch (tc.type) {
-    case ColorType::Default:
-        return isFg ? s_defaultFg : s_defaultBg;
-    case ColorType::Index16:
-        return (tc.index() < 16) ? s_ansiColors[tc.index()] : s_defaultFg;
-    case ColorType::Index256:
-        return colorFrom256(tc.index());
-    case ColorType::RGB:
-        return QColor(tc.r, tc.g, tc.b);
-    }
-    return isFg ? s_defaultFg : s_defaultBg;
-}
-
 // ── TerminalWidget ────────────────────────────────────────────────────────────
 
 TerminalWidget::TerminalWidget(QWidget* parent) :
     QAbstractScrollArea(parent),
+    _colorScheme(ColorScheme::Default()),
     _font(QFontDatabase::systemFont(QFontDatabase::FixedFont)),
     _fm(_font)
 {
     _font.setPointSize(11);
-    _fm = QFontMetricsF(_font);
+    _applyFont(_font);
 
-    // Compute cell dimensions from the font.
-    _cellW = static_cast<int>(std::ceil(_fm.horizontalAdvance(QLatin1Char('M'))));
-    _cellH = static_cast<int>(std::ceil(_fm.height()));
-    _baselineOffset = static_cast<int>(std::ceil(_fm.ascent()));
-
-    setFont(_font);
     setFocusPolicy(Qt::StrongFocus);
     viewport()->setBackgroundRole(QPalette::NoRole);
     viewport()->setAutoFillBackground(false);
@@ -119,7 +70,6 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     connect(_terminal, &KTerminal::repaintNeeded, this, &TerminalWidget::_onRepaintNeeded);
     connect(_terminal, &KTerminal::titleChanged, this, &TerminalWidget::_onTitleChanged);
     connect(_terminal, &KTerminal::terminated, this, [this]() {
-        // Shell exited — could close the widget or show a message.
         _scheduleRepaint();
     });
 
@@ -129,13 +79,36 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     verticalScrollBar()->setSingleStep(1);
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
         const int maxVal = verticalScrollBar()->maximum();
-        // value==maximum means live view (bottom); smaller values = scrolled back.
         _scrollOffset = maxVal - value;
         viewport()->update();
     });
 }
 
 TerminalWidget::~TerminalWidget() = default;
+
+void TerminalWidget::_applyFont(const QFont& font)
+{
+    _font = font;
+    _fm   = QFontMetricsF(_font);
+    _cellW           = static_cast<int>(std::ceil(_fm.horizontalAdvance(QLatin1Char('M'))));
+    _cellH           = static_cast<int>(std::ceil(_fm.height()));
+    _baselineOffset  = static_cast<int>(std::ceil(_fm.ascent()));
+    setFont(_font);
+}
+
+void TerminalWidget::applyProfile(const Profile& profile, const ColorScheme& scheme)
+{
+    QFont f(profile.fontFamily, profile.fontSize);
+    f.setStyleHint(QFont::Monospace);
+    _applyFont(f);
+    setColorScheme(scheme);
+}
+
+void TerminalWidget::setColorScheme(const ColorScheme& scheme)
+{
+    _colorScheme = scheme;
+    _scheduleRepaint();
+}
 
 void TerminalWidget::Start(const QString& program, const QStringList& /*args*/)
 {
@@ -157,16 +130,13 @@ void TerminalWidget::paintEvent(QPaintEvent* /*event*/)
     const int sbRows = static_cast<int>(buf.Scrollback().size());
     const int screenRows = buf.Rows();
 
-    // Fill background.
-    p.fillRect(viewport()->rect(), s_defaultBg);
+    // Fill background using the color scheme.
+    p.fillRect(viewport()->rect(), _colorScheme.background);
 
     const CursorPos cursorPos = buf.CursorPosition();
 
     for (int row = 0; row < _rows; ++row) {
-        // Which buffer row are we drawing?
         const int bufRow = row + _scrollOffset - sbRows;
-        // bufRow < 0  → scrollback row at index (sbRows + bufRow)
-        // bufRow >= 0 → screen row at bufRow
 
         for (int col = 0; col < _cols; ++col) {
             const TextCell* cell = nullptr;
@@ -199,7 +169,22 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
 
     const TextAttribute& attr = cell.attr;
 
-    // Resolve colors, applying inverse and invisible.
+    // Resolve a TextColor to a QColor using the current scheme.
+    auto resolveColor = [this](const TextColor& tc, bool isFg) -> QColor {
+        switch (tc.type) {
+        case ColorType::Default:
+            return isFg ? _colorScheme.foreground : _colorScheme.background;
+        case ColorType::Index16:
+            return (tc.index() < 16) ? _colorScheme.ansiColors[tc.index()]
+                                     : _colorScheme.foreground;
+        case ColorType::Index256:
+            return colorFrom256(_colorScheme, tc.index());
+        case ColorType::RGB:
+            return QColor(tc.r, tc.g, tc.b);
+        }
+        return isFg ? _colorScheme.foreground : _colorScheme.background;
+    };
+
     QColor fg = resolveColor(attr.fg, true);
     QColor bg = resolveColor(attr.bg, false);
 
@@ -207,18 +192,17 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
         std::swap(fg, bg);
     }
     if (attr.invisible) {
-        fg = bg; // render invisible text as blank
+        fg = bg;
     }
     if (attr.faint) {
         fg.setAlpha(128);
     }
 
-    // Background fill.
-    if (bg != s_defaultBg || isCursor) {
+    // Background fill (skip if default to avoid over-drawing).
+    if (bg != _colorScheme.background || isCursor) {
         p.fillRect(rect, bg);
     }
 
-    // Skip drawing space characters (just the background fill is enough).
     if (cell.ch == U' ' || cell.ch == 0) {
         if (attr.underline) {
             p.setPen(fg);
@@ -227,18 +211,15 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
         return;
     }
 
-    // Build font for this cell.
     QFont f = _font;
     if (attr.bold)   { f.setBold(true); }
     if (attr.italic) { f.setItalic(true); }
     p.setFont(f);
     p.setPen(fg);
 
-    // Convert char32_t → QString for drawText.
     const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&cell.ch), 1);
     p.drawText(rect.left(), rect.top() + _baselineOffset, text);
 
-    // Decorations.
     if (attr.underline) {
         p.setPen(fg);
         p.drawLine(rect.left(), rect.top() + _baselineOffset + 1,

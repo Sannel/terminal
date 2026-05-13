@@ -5,9 +5,13 @@ find_package(KF6 REQUIRED COMPONENTS CoreAddons I18n XmlGui)
 
 add_executable(kterm
     src/main.cpp
+    src/MainWindow.hpp
+    src/MainWindow.cpp
 )
 
 set_target_properties(kterm PROPERTIES AUTOMOC ON)
+
+target_include_directories(kterm PRIVATE src)
 
 target_link_libraries(kterm
     PRIVATE
@@ -18,6 +22,7 @@ target_link_libraries(kterm
         KF6::I18n
         KF6::XmlGui
         kterm-widget
+        kterm-settings
 )
 
 target_compile_features(kterm PRIVATE cxx_std_20)

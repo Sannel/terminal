@@ -15,6 +15,7 @@ target_include_directories(kterm-widget
 target_link_libraries(kterm-widget
     PUBLIC
         kterm-core
+        kterm-settings
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
