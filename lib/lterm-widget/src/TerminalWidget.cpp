@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 #include "TerminalWidget.hpp"
-#include "TerminalGLView.hpp"
 
 #include <QFontDatabase>
 #include <QKeyEvent>
@@ -47,10 +46,6 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     viewport()->setBackgroundRole(QPalette::NoRole);
     viewport()->setAutoFillBackground(false);
 
-    // Install the OpenGL viewport for GPU-accelerated rendering.
-    _glView = new TerminalGLView(this);
-    setViewport(_glView);
-
     // Cursor blink: 500ms interval.
     _cursorBlinkTimer = new QTimer(this);
     _cursorBlinkTimer->setInterval(500);
@@ -65,11 +60,7 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     _repaintCoalescer->setInterval(16); // ~60fps cap
     connect(_repaintCoalescer, &QTimer::timeout, this, [this]() {
         _repaintPending = false;
-        if (_glView) {
-            _glView->update();
-        } else {
-            viewport()->update();
-        }
+        viewport()->update();
         _updateScrollbar();
     });
 
@@ -89,7 +80,7 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
         const int maxVal = verticalScrollBar()->maximum();
         _scrollOffset = maxVal - value;
-        if (_glView) { _glView->update(); } else { viewport()->update(); }
+        viewport()->update();
     });
 }
 
@@ -110,6 +101,15 @@ void TerminalWidget::applyProfile(const Profile& profile, const ColorScheme& sch
     QFont f(profile.fontFamily, profile.fontSize);
     f.setStyleHint(QFont::Monospace);
     _applyFont(f);
+
+    // Load background image if specified.
+    _bgOpacity = profile.backgroundOpacity;
+    if (!profile.backgroundImagePath.isEmpty()) {
+        _bgPixmap.load(profile.backgroundImagePath);
+    } else {
+        _bgPixmap = QPixmap{};
+    }
+
     setColorScheme(scheme);
 }
 
@@ -131,17 +131,31 @@ void TerminalWidget::Start(const QString& program, const QStringList& /*args*/,
 
 // ── Painting ─────────────────────────────────────────────────────────────────
 
-void TerminalWidget::_paintGL(QOpenGLWidget* surface)
+void TerminalWidget::paintEvent(QPaintEvent* /*event*/)
 {
     const auto& buf = _terminal->Buffer();
-    QPainter p(surface);
+    QPainter p(viewport());
     p.setFont(_font);
 
     const int sbRows = static_cast<int>(buf.Scrollback().size());
     const int screenRows = buf.Rows();
+    const QRect vr = viewport()->rect();
 
-    // Fill background using the color scheme.
-    p.fillRect(surface->rect(), _colorScheme.background);
+    // 1. Solid background.
+    p.fillRect(vr, _colorScheme.background);
+
+    // 2. Background image (if set and opacity > 0).
+    if (!_bgPixmap.isNull() && _bgOpacity > 0.0) {
+        p.save();
+        p.setOpacity(_bgOpacity);
+        // Scale to fill viewport while preserving aspect ratio.
+        const QPixmap scaled = _bgPixmap.scaled(
+            vr.size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        const int x = (vr.width()  - scaled.width())  / 2;
+        const int y = (vr.height() - scaled.height()) / 2;
+        p.drawPixmap(x, y, scaled);
+        p.restore();
+    }
 
     const CursorPos cursorPos = buf.CursorPosition();
 

@@ -40,6 +40,7 @@ private slots:
     void _removeProfile(const QString& profileName);
     void _browseShell();
     void _browseWorkDir();
+    void _browseBgImage();
     void _save();
 
 private:
@@ -73,12 +74,14 @@ private:
 
     // Profile page (one shared page, reloaded on switch)
     int            _profilePageIdx = -1;
-    QLabel*        _profileTitle  = nullptr;
-    QLineEdit*     _shellEdit     = nullptr;
-    QLineEdit*     _workDirEdit   = nullptr;
-    QFontComboBox* _fontCombo     = nullptr;
-    QSpinBox*      _fontSizeSpin  = nullptr;
-    QComboBox*     _schemeCombo   = nullptr;
+    QLabel*        _profileTitle     = nullptr;
+    QLineEdit*     _shellEdit        = nullptr;
+    QLineEdit*     _workDirEdit      = nullptr;
+    QFontComboBox* _fontCombo        = nullptr;
+    QSpinBox*      _fontSizeSpin     = nullptr;
+    QComboBox*     _schemeCombo      = nullptr;
+    QLineEdit*     _bgImageEdit      = nullptr;  // background image path
+    QSpinBox*      _bgOpacitySpin    = nullptr;  // background opacity 0–100%
     QPushButton*   _deleteProfileBtn = nullptr;
 
     // Save button (bottom right)

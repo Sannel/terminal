@@ -352,6 +352,33 @@ void SettingsDialog::_buildProfilePage(const QString& /*profileName*/)
     _schemeCombo->setMinimumWidth(200);
     form->addRow(i18n("Color scheme:"), _schemeCombo);
 
+    // Background image
+    auto* bgImageRow = new QHBoxLayout;
+    bgImageRow->setSpacing(4);
+    _bgImageEdit = new QLineEdit(formW);
+    _bgImageEdit->setPlaceholderText(i18n("No background image"));
+    auto* bgImageBtn = new QPushButton(
+        QIcon::fromTheme(QStringLiteral("document-open")), QString{}, formW);
+    bgImageBtn->setFixedWidth(32);
+    bgImageBtn->setToolTip(i18n("Browse for image…"));
+    auto* bgImageClear = new QPushButton(
+        QIcon::fromTheme(QStringLiteral("edit-clear")), QString{}, formW);
+    bgImageClear->setFixedWidth(32);
+    bgImageClear->setToolTip(i18n("Clear background image"));
+    bgImageRow->addWidget(_bgImageEdit);
+    bgImageRow->addWidget(bgImageBtn);
+    bgImageRow->addWidget(bgImageClear);
+    form->addRow(i18n("Background image:"), bgImageRow);
+
+    // Background opacity
+    _bgOpacitySpin = new QSpinBox(formW);
+    _bgOpacitySpin->setRange(0, 100);
+    _bgOpacitySpin->setValue(50);
+    _bgOpacitySpin->setSuffix(QStringLiteral(" %"));
+    _bgOpacitySpin->setFixedWidth(90);
+    _bgOpacitySpin->setToolTip(i18n("How visible the background image is (0% = hidden, 100% = fully opaque)"));
+    form->addRow(i18n("Image opacity:"), _bgOpacitySpin);
+
     scrollArea->setWidget(formW);
     vbox->addWidget(scrollArea, 1);
 
@@ -372,8 +399,10 @@ void SettingsDialog::_buildProfilePage(const QString& /*profileName*/)
     vbox->addLayout(dangerRow);
 
     // Connections
-    connect(shellBtn, &QPushButton::clicked, this, &SettingsDialog::_browseShell);
-    connect(wdBtn,    &QPushButton::clicked, this, &SettingsDialog::_browseWorkDir);
+    connect(shellBtn,   &QPushButton::clicked, this, &SettingsDialog::_browseShell);
+    connect(wdBtn,      &QPushButton::clicked, this, &SettingsDialog::_browseWorkDir);
+    connect(bgImageBtn, &QPushButton::clicked, this, &SettingsDialog::_browseBgImage);
+    connect(bgImageClear, &QPushButton::clicked, this, [this]() { _bgImageEdit->clear(); });
     connect(_deleteProfileBtn, &QPushButton::clicked, this, [this]() {
         _removeProfile(_editingProfileKey);
     });
@@ -549,6 +578,16 @@ void SettingsDialog::_browseWorkDir()
     if (!path.isEmpty()) _workDirEdit->setText(path);
 }
 
+void SettingsDialog::_browseBgImage()
+{
+    const QString start = _bgImageEdit->text().isEmpty()
+        ? QDir::homePath() : _bgImageEdit->text();
+    const QString path = QFileDialog::getOpenFileName(
+        this, i18n("Select Background Image"), start,
+        i18n("Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;All Files (*)"));
+    if (!path.isEmpty()) _bgImageEdit->setText(path);
+}
+
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
 void SettingsDialog::_saveCurrentFormToProfile()
@@ -556,12 +595,14 @@ void SettingsDialog::_saveCurrentFormToProfile()
     if (_editingProfileKey.isEmpty() ||
         !_localProfiles.contains(_editingProfileKey)) return;
 
-    Profile& p         = _localProfiles[_editingProfileKey];
-    p.shell            = _shellEdit->text().trimmed();
-    p.workingDirectory = _workDirEdit->text().trimmed();
-    p.fontFamily       = _fontCombo->currentFont().family();
-    p.fontSize         = _fontSizeSpin->value();
-    p.colorScheme      = _schemeCombo->currentText();
+    Profile& p            = _localProfiles[_editingProfileKey];
+    p.shell               = _shellEdit->text().trimmed();
+    p.workingDirectory    = _workDirEdit->text().trimmed();
+    p.fontFamily          = _fontCombo->currentFont().family();
+    p.fontSize            = _fontSizeSpin->value();
+    p.colorScheme         = _schemeCombo->currentText();
+    p.backgroundImagePath = _bgImageEdit->text().trimmed();
+    p.backgroundOpacity   = _bgOpacitySpin->value() / 100.0;
 }
 
 void SettingsDialog::_loadProfileToForm(const Profile& p)
@@ -577,6 +618,9 @@ void SettingsDialog::_loadProfileToForm(const Profile& p)
 
     const int idx = _schemeCombo->findText(p.colorScheme);
     _schemeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+
+    _bgImageEdit->setText(p.backgroundImagePath);
+    _bgOpacitySpin->setValue(qRound(p.backgroundOpacity * 100.0));
 }
 
 void SettingsDialog::_syncDefaultCombo()

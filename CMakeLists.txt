@@ -30,8 +30,6 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Network
     DBus
-    OpenGL
-    OpenGLWidgets
 )
 qt_standard_project_setup()
 

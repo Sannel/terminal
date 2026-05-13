@@ -1,8 +1,6 @@
 add_library(lterm-widget STATIC
     include/TerminalWidget.hpp
     src/TerminalWidget.cpp
-    include/TerminalGLView.hpp
-    src/TerminalGLView.cpp
 )
 
 set_target_properties(lterm-widget PROPERTIES
@@ -21,7 +19,6 @@ target_link_libraries(lterm-widget
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
-        Qt6::OpenGLWidgets
 )
 
 target_compile_features(lterm-widget PUBLIC cxx_std_20)

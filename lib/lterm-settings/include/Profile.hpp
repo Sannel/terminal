@@ -20,6 +20,10 @@ struct Profile
     int     fontSize       { 11 };
     QString colorScheme    { QStringLiteral("Default") };
 
+    // Background image
+    QString backgroundImagePath {};      // empty → no background image
+    double  backgroundOpacity   { 0.5 }; // 0.0–1.0; only used when path is set
+
     static Profile fromJson(const QJsonObject& obj);
     QJsonObject toJson() const;
 

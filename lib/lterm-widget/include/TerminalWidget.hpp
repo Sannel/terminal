@@ -8,18 +8,21 @@
 #include <QAbstractScrollArea>
 #include <QFont>
 #include <QFontMetricsF>
-#include <QOpenGLWidget>
+#include <QPixmap>
 #include <QTimer>
 
 namespace LTerm {
 
-class TerminalGLView;
-
 /**
  * TerminalWidget — a QAbstractScrollArea that renders a LTerminal.
  *
- * The viewport is a TerminalGLView (QOpenGLWidget), so all cell painting
- * runs on the GPU via Qt's OpenGL paint engine.
+ * Responsibilities:
+ *  - Draw the visible terminal buffer via QPainter (cell-by-cell).
+ *  - Optional background image with opacity, painted before cell drawing.
+ *  - Handle keyboard input → VT sequence encoding → LTerminal::sendInput.
+ *  - Resize: recalculate rows/cols from pixel size, notify LTerminal.
+ *  - Scrollback: translate scrollbar position → buffer view offset.
+ *  - Cursor blink via a QTimer.
  */
 class TerminalWidget : public QAbstractScrollArea
 {
@@ -33,7 +36,7 @@ public:
     void Start(const QString& program = {}, const QStringList& args = {},
                const QString& workingDir = {});
 
-    /** Apply a full profile (font + color scheme). */
+    /** Apply a full profile (font + color scheme + background). */
     void applyProfile(const Profile& profile, const ColorScheme& scheme);
 
     /** Replace just the color scheme. */
@@ -41,13 +44,11 @@ public:
 
     LTerminal* terminal() const { return _terminal; }
 
-    /** Called by TerminalGLView::paintGL() — do not call directly. */
-    void _paintGL(QOpenGLWidget* surface);
-
 signals:
     void titleChanged(const QString& title);
 
 protected:
+    void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void focusInEvent(QFocusEvent* event) override;
@@ -65,10 +66,11 @@ private:
     void _paintCell(QPainter& p, int row, int col, const TextCell& cell,
                     bool isCursor) const;
 
-    LTerminal*      _terminal = nullptr;
-    TerminalGLView* _glView   = nullptr;
+    LTerminal* _terminal = nullptr;
 
     ColorScheme  _colorScheme;
+    QPixmap      _bgPixmap;       // background image (null = none)
+    double       _bgOpacity = 0.0; // 0.0 = fully transparent (no image visible)
 
     QFont        _font;
     QFontMetricsF _fm;
