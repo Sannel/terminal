@@ -9,7 +9,6 @@
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QKeyEvent>
-#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
@@ -50,6 +49,7 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     setFocusPolicy(Qt::StrongFocus);
     viewport()->setBackgroundRole(QPalette::NoRole);
     viewport()->setAutoFillBackground(false);
+    viewport()->setAttribute(Qt::WA_OpaquePaintEvent, true);
 
     // Cursor blink: 500ms interval.
     _cursorBlinkTimer = new QTimer(this);
@@ -177,6 +177,7 @@ void TerminalWidget::paintEvent(QPaintEvent* /*event*/)
         const int y = (vr.height() - scaled.height()) / 2;
         p.drawPixmap(x, y, scaled);
         p.restore();
+        p.setOpacity(1.0); // ensure fully opaque for all cell rendering below
     }
 
     const CursorPos cursorPos = buf.CursorPosition();
@@ -592,20 +593,8 @@ void TerminalWidget::_copySelection()
 
 void TerminalWidget::_showContextMenu(const QPoint& globalPos)
 {
-    QMenu menu(this);
-    QAction* copyAction  = menu.addAction(QStringLiteral("Copy"));
-    QAction* pasteAction = menu.addAction(QStringLiteral("Paste"));
-    copyAction->setEnabled(_hasSelection);
-
-    const QAction* chosen = menu.exec(globalPos);
-    if (chosen == copyAction) {
-        _copySelection();
-    } else if (chosen == pasteAction) {
-        const QString text = QGuiApplication::clipboard()->text();
-        if (!text.isEmpty()) {
-            _terminal->SendInput(text.toUtf8().toStdString());
-        }
-    }
+    // Right-click is handled directly in _onViewportMousePress.
+    Q_UNUSED(globalPos);
 }
 
 void TerminalWidget::_onViewportMousePress(QMouseEvent* event)
@@ -616,6 +605,15 @@ void TerminalWidget::_onViewportMousePress(QMouseEvent* event)
         _hasSelection = false;
         _selecting    = true;
         viewport()->update();
+    } else if (event->button() == Qt::RightButton) {
+        if (_hasSelection) {
+            _copySelection();
+        } else {
+            const QString text = QGuiApplication::clipboard()->text();
+            if (!text.isEmpty()) {
+                _terminal->SendInput(text.toUtf8().toStdString());
+            }
+        }
     }
 }
 
@@ -648,7 +646,8 @@ void TerminalWidget::_onViewportMouseRelease(QMouseEvent* event)
 
 void TerminalWidget::_onViewportContextMenu(QContextMenuEvent* event)
 {
-    _showContextMenu(event->globalPos());
+    // Handled via right-click in MouseButtonPress — nothing to do here.
+    Q_UNUSED(event);
 }
 
 bool TerminalWidget::viewportEvent(QEvent* event)
@@ -662,9 +661,6 @@ bool TerminalWidget::viewportEvent(QEvent* event)
         return true;
     case QEvent::MouseButtonRelease:
         _onViewportMouseRelease(static_cast<QMouseEvent*>(event));
-        return true;
-    case QEvent::ContextMenu:
-        _onViewportContextMenu(static_cast<QContextMenuEvent*>(event));
         return true;
     default:
         return QAbstractScrollArea::viewportEvent(event);
