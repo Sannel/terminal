@@ -176,7 +176,9 @@ void TerminalWidget::paintEvent(QPaintEvent* /*event*/)
     const CursorPos cursorPos = buf.CursorPosition();
 
     for (int row = 0; row < _rows; ++row) {
-        const int bufRow = row + _scrollOffset - sbRows;
+        // _scrollOffset==0 = live view (bottom); positive = scrolled up N rows.
+        // Negative bufRow means the row comes from scrollback.
+        const int bufRow = row - _scrollOffset;
 
         for (int col = 0; col < _cols; ++col) {
             const TextCell* cell = nullptr;
