@@ -67,7 +67,7 @@ struct Profile
     // These settings are persisted but rendering is not yet implemented.
     double          opacity                     { 1.0 };
     bool            retroTerminalEffect         { false };
-    IntenseTextStyle intenseTextStyle           { IntenseTextStyle::Bright };
+    IntenseTextStyle intenseTextStyle           { IntenseTextStyle::Bold };
     bool            adjustIndistinguishableColors{ true };
 
     // ── Background image ──────────────────────────────────────────────────────

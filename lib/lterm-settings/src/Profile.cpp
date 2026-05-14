@@ -110,9 +110,9 @@ static QString fontWeightStr(FontWeight v)
 
 static IntenseTextStyle parseIntenseTextStyle(const QString& s)
 {
-    if (s == QStringLiteral("bold")) return IntenseTextStyle::Bold;
-    if (s == QStringLiteral("all"))  return IntenseTextStyle::All;
-    return IntenseTextStyle::Bright;
+    if (s == QStringLiteral("bright")) return IntenseTextStyle::Bright;
+    if (s == QStringLiteral("all"))    return IntenseTextStyle::All;
+    return IntenseTextStyle::Bold;  // default: bold font, no color shift (safe for Solarized-style schemes)
 }
 static QString intenseTextStyleStr(IntenseTextStyle v)
 {

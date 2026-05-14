@@ -110,7 +110,7 @@ private:
     CursorShape  _cursorShape   = CursorShape::Bar;
     int          _cursorHeight  = 25;  // % for Underscore shape
     std::optional<QColor> _cursorColorOverride;
-    IntenseTextStyle _intenseTextStyle = IntenseTextStyle::Bright;
+    IntenseTextStyle _intenseTextStyle = IntenseTextStyle::Bold;
     QTimer*      _cursorBlinkTimer = nullptr;
 
     bool         _repaintPending = false;
