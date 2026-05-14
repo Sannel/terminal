@@ -6,6 +6,8 @@
 
 #include <KLocalizedString>
 
+#include <LTermSettings.hpp>
+
 #include <QAction>
 #include <QApplication>
 #include <QFileInfo>
@@ -41,6 +43,17 @@ MainWindow::MainWindow(QWidget* parent) : KXmlGuiWindow(parent)
     menuBar()->hide();
 
     LTermSettings::instance().load();
+
+    // Apply global settings that affect window state.
+    const GlobalSettings& g = LTermSettings::instance().global();
+    if (g.alwaysOnTop) {
+        setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    }
+    if (g.centerOnLaunch) {
+        // Will be centered after show() — store flag for showEvent if needed.
+        setAttribute(Qt::WA_Moved, false);
+    }
+
     newTab();
 }
 

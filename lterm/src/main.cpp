@@ -5,6 +5,7 @@
 
 #include <KAboutData>
 #include <KLocalizedString>
+#include <LTermSettings.hpp>
 #include <QApplication>
 
 int main(int argc, char* argv[])
@@ -22,7 +23,22 @@ int main(int argc, char* argv[])
     KAboutData::setApplicationData(about);
 
     LTerm::MainWindow window;
-    window.show();
+
+    // Apply launch mode before show.
+    using LTerm::LaunchMode;
+    const auto lm = LTerm::LTermSettings::instance().global().launchMode;
+
+    switch (lm) {
+    case LaunchMode::Maximized:
+        window.showMaximized();
+        break;
+    case LaunchMode::Fullscreen:
+        window.showFullScreen();
+        break;
+    default:
+        window.show();
+        break;
+    }
 
     return app.exec();
 }

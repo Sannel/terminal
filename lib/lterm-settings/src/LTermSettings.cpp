@@ -69,8 +69,14 @@ void LTermSettings::load()
 
     const QJsonObject root = doc.object();
 
-    _defaultProfileName = root[QStringLiteral("defaultProfile")]
-                              .toString(_defaultProfileName);
+    // Load global settings (new format).
+    if (root.contains(QStringLiteral("global"))) {
+        _global = GlobalSettings::fromJson(root[QStringLiteral("global")].toObject());
+    } else {
+        // Migrate old flat format: "defaultProfile" was a top-level key.
+        _global.defaultProfileName = root[QStringLiteral("defaultProfile")]
+                                         .toString(_global.defaultProfileName);
+    }
 
     // Load profiles.
     const QJsonObject profiles = root[QStringLiteral("profiles")].toObject();
@@ -81,11 +87,10 @@ void LTermSettings::load()
     // Load color schemes.
     const QJsonObject schemes = root[QStringLiteral("colorSchemes")].toObject();
     for (const QString& key : schemes.keys()) {
-        ColorScheme cs = ColorScheme::fromJson(schemes[key].toObject());
-        _colorSchemes[key] = cs;
+        _colorSchemes[key] = ColorScheme::fromJson(schemes[key].toObject());
     }
 
-    // Guarantee built-in schemes are always present (may be overridden by user).
+    // Guarantee built-in schemes are always present.
     _ensureDefaults();
 }
 
@@ -96,7 +101,7 @@ void LTermSettings::save() const
     QDir().mkpath(QFileInfo(path).absolutePath());
 
     QJsonObject root;
-    root[QStringLiteral("defaultProfile")] = _defaultProfileName;
+    root[QStringLiteral("global")] = _global.toJson();
 
     QJsonObject profilesObj;
     for (auto it = _profiles.constBegin(); it != _profiles.constEnd(); ++it) {
@@ -110,13 +115,21 @@ void LTermSettings::save() const
     }
     root[QStringLiteral("colorSchemes")] = schemesObj;
 
-    // Atomic write: write to temp file, then rename into place.
+    // Atomic write.
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
         return;
     }
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     file.commit();
+}
+
+// ── Global ────────────────────────────────────────────────────────────────────
+
+void LTermSettings::setGlobal(const GlobalSettings& g)
+{
+    _global = g;
+    emit settingsChanged();
 }
 
 // ── Profiles ──────────────────────────────────────────────────────────────────
@@ -135,15 +148,15 @@ void LTermSettings::setProfile(const Profile& p)
 void LTermSettings::removeProfile(const QString& name)
 {
     _profiles.remove(name);
-    if (_defaultProfileName == name && !_profiles.isEmpty()) {
-        _defaultProfileName = _profiles.firstKey();
+    if (_global.defaultProfileName == name && !_profiles.isEmpty()) {
+        _global.defaultProfileName = _profiles.firstKey();
     }
     emit settingsChanged();
 }
 
 void LTermSettings::setDefaultProfileName(const QString& name)
 {
-    _defaultProfileName = name;
+    _global.defaultProfileName = name;
     emit settingsChanged();
 }
 

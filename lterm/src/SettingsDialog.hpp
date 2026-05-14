@@ -5,9 +5,12 @@
 
 #include "LTermSettings.hpp"
 
+#include <QColor>
 #include <QDialog>
 #include <QMap>
+#include <optional>
 
+class QCheckBox;
 class QComboBox;
 class QFontComboBox;
 class QLabel;
@@ -17,15 +20,18 @@ class QListWidgetItem;
 class QPushButton;
 class QSpinBox;
 class QStackedWidget;
+class QTableWidget;
 
 namespace LTerm {
 
 /**
  * SettingsDialog — modal dialog for editing profiles and global settings.
  *
- * Uses a Windows-Terminal-style sidebar (QListWidget) on the left and
- * a QStackedWidget on the right. Maintains a local copy of profiles that
- * is only pushed to LTermSettings when the user clicks Save.
+ * Mirrors the Windows Terminal settings UI structure:
+ *   Startup | Interaction | Appearance | PROFILES | Color Schemes
+ *
+ * Maintains local copies of all settings and only pushes to LTermSettings
+ * when the user clicks Save.
  */
 class SettingsDialog : public QDialog
 {
@@ -44,48 +50,110 @@ private slots:
     void _save();
 
 private:
-    // Sidebar nav
+    // ── Nav building ─────────────────────────────────────────────────────────
     void _buildNav();
     void _buildStartupPage();
-    void _buildProfilePage(const QString& profileName);
+    void _buildInteractionPage();
+    void _buildGlobalAppearancePage();
+    void _buildProfilePage();
     void _buildColorSchemesPage();
     void _rebuildProfileNavItems();
-    void _selectNavItem(QListWidgetItem* item);
 
+    // ── Data sync helpers ─────────────────────────────────────────────────────
     void _saveCurrentFormToProfile();
     void _loadProfileToForm(const Profile& p);
+    void _saveGlobalForms();
+    void _loadGlobalToStartup();
+    void _loadGlobalToInteraction();
+    void _loadGlobalToAppearance();
     void _syncDefaultCombo();
 
-    // Nav helpers
+    // ── Color button helpers ──────────────────────────────────────────────────
+    void _connectColorBtn(QPushButton* btn, std::optional<QColor>& storage);
+    static void _updateColorBtn(QPushButton* btn, const std::optional<QColor>& c);
+    static std::optional<QColor> _pickColor(QPushButton* btn,
+                                            const std::optional<QColor>& current);
+
+    // ── Nav item factories ────────────────────────────────────────────────────
     QListWidgetItem* _addNavHeader(const QString& text);
     QListWidgetItem* _addNavItem(const QString& text, const QIcon& icon,
                                   const QString& data, int indent = 0);
 
-    // Local working copies — not committed to LTermSettings until Save.
+    // ── Local working copies ──────────────────────────────────────────────────
     QMap<QString, Profile> _localProfiles;
-    QString _editingProfileKey; // profile key whose form is currently visible
+    GlobalSettings         _localGlobal;
+    QString                _editingProfileKey;
 
-    // Layout
-    QListWidget*   _nav          = nullptr;
-    QStackedWidget* _stack       = nullptr;
+    // ── Shared layout ─────────────────────────────────────────────────────────
+    QListWidget*    _nav   = nullptr;
+    QStackedWidget* _stack = nullptr;
+    QPushButton*    _saveBtn = nullptr;
 
-    // Startup page
-    QComboBox*     _defaultCombo = nullptr;
+    // ── Startup page ──────────────────────────────────────────────────────────
+    QComboBox* _defaultCombo        = nullptr;
+    QComboBox* _launchModeCombo     = nullptr;
+    QSpinBox*  _initialRowsSpin     = nullptr;
+    QSpinBox*  _initialColsSpin     = nullptr;
+    QCheckBox* _centerOnLaunchCheck = nullptr;
+    QCheckBox* _alwaysOnTopCheck    = nullptr;
+    QCheckBox* _alwaysShowTabsCheck = nullptr;
+    QComboBox* _tabWidthModeCombo   = nullptr;
 
-    // Profile page (one shared page, reloaded on switch)
-    int            _profilePageIdx = -1;
-    QLabel*        _profileTitle     = nullptr;
-    QLineEdit*     _shellEdit        = nullptr;
-    QLineEdit*     _workDirEdit      = nullptr;
-    QFontComboBox* _fontCombo        = nullptr;
-    QSpinBox*      _fontSizeSpin     = nullptr;
-    QComboBox*     _schemeCombo      = nullptr;
-    QLineEdit*     _bgImageEdit      = nullptr;  // background image path
-    QSpinBox*      _bgOpacitySpin    = nullptr;  // background opacity 0–100%
-    QPushButton*   _deleteProfileBtn = nullptr;
+    // ── Interaction page ──────────────────────────────────────────────────────
+    QCheckBox* _copyOnSelectCheck  = nullptr;
+    QCheckBox* _trimPasteCheck     = nullptr;
+    QLineEdit* _wordDelimitersEdit = nullptr;
 
-    // Save button (bottom right)
-    QPushButton*   _saveBtn       = nullptr;
+    // ── Global Appearance page ────────────────────────────────────────────────
+    QComboBox* _themeCombo = nullptr;
+
+    // ── Profile page ─────────────────────────────────────────────────────────
+    int    _profilePageIdx = -1;
+    QLabel* _profileTitle  = nullptr;
+
+    // General group
+    QLineEdit*   _nameEdit           = nullptr;
+    QLineEdit*   _shellEdit          = nullptr;
+    QLineEdit*   _workDirEdit        = nullptr;
+    QLineEdit*   _tabTitleEdit       = nullptr;
+    QPushButton* _tabColorBtn        = nullptr;
+    std::optional<QColor> _tabColor;
+    QCheckBox*   _hiddenCheck        = nullptr;
+    QCheckBox*   _suppressTitleCheck = nullptr;
+    QComboBox*   _closeOnExitCombo   = nullptr;
+
+    // Appearance group
+    QComboBox*     _schemeCombo              = nullptr;
+    QFontComboBox* _fontCombo                = nullptr;
+    QSpinBox*      _fontSizeSpin             = nullptr;
+    QComboBox*     _fontWeightCombo          = nullptr;
+    QComboBox*     _cursorShapeCombo         = nullptr;
+    QSpinBox*      _cursorHeightSpin         = nullptr;
+    QPushButton*   _cursorColorBtn           = nullptr;
+    std::optional<QColor> _cursorColor;
+    QPushButton*   _fgColorBtn               = nullptr;
+    std::optional<QColor> _fgColor;
+    QPushButton*   _bgColorBtn               = nullptr;
+    std::optional<QColor> _bgColor;
+    QPushButton*   _selBgColorBtn            = nullptr;
+    std::optional<QColor> _selBgColor;
+    QCheckBox*     _enableBuiltinGlyphsCheck = nullptr;
+    QCheckBox*     _enableColorGlyphsCheck   = nullptr;
+    QLineEdit*     _bgImageEdit              = nullptr;
+    QSpinBox*      _bgOpacitySpin            = nullptr;
+    QComboBox*     _bgStretchCombo           = nullptr;
+    QComboBox*     _bgAlignCombo             = nullptr;
+
+    // Advanced group
+    QSpinBox*    _historySizeSpin     = nullptr;
+    QComboBox*   _scrollbarStateCombo = nullptr;
+    QSpinBox*    _paddingSpin         = nullptr;
+    QCheckBox*   _snapOnInputCheck    = nullptr;
+    QCheckBox*   _altGrAliasingCheck  = nullptr;
+    QTableWidget* _envVarsTable       = nullptr;
+    QPushButton* _addEnvVarBtn        = nullptr;
+    QPushButton* _removeEnvVarBtn     = nullptr;
+    QPushButton* _deleteProfileBtn    = nullptr;
 };
 
 } // namespace LTerm

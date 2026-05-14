@@ -102,8 +102,23 @@ void TerminalWidget::applyProfile(const Profile& profile, const ColorScheme& sch
     f.setStyleHint(QFont::Monospace);
     _applyFont(f);
 
-    // Load background image if specified.
-    _bgOpacity = profile.backgroundOpacity;
+    // Cursor settings.
+    _cursorShape        = profile.cursorShape;
+    _cursorHeight       = profile.cursorHeight;
+    _cursorColorOverride= profile.cursorColor;
+
+    // Padding.
+    _padding = std::max(0, profile.padding);
+
+    // Scrollbar policy.
+    switch (profile.scrollbarState) {
+    case ScrollbarState::Hidden: setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff); break;
+    case ScrollbarState::Always: setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);  break;
+    default:                     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);  break;
+    }
+
+    // Background image.
+    _bgOpacity = profile.backgroundImageOpacity;
     if (!profile.backgroundImagePath.isEmpty()) {
         _bgPixmap.load(profile.backgroundImagePath);
     } else {
@@ -111,6 +126,7 @@ void TerminalWidget::applyProfile(const Profile& profile, const ColorScheme& sch
     }
 
     setColorScheme(scheme);
+    _recalcDimensions();
 }
 
 void TerminalWidget::setColorScheme(const ColorScheme& scheme)
@@ -188,12 +204,11 @@ void TerminalWidget::paintEvent(QPaintEvent* /*event*/)
 void TerminalWidget::_paintCell(QPainter& p, int row, int col,
                                 const TextCell& cell, bool isCursor) const
 {
-    const QRect rect(col * _cellW, row * _cellH,
+    const QRect rect(_padding + col * _cellW, _padding + row * _cellH,
                      cell.wide ? _cellW * 2 : _cellW, _cellH);
 
     const TextAttribute& attr = cell.attr;
 
-    // Resolve a TextColor to a QColor using the current scheme.
     auto resolveColor = [this](const TextColor& tc, bool isFg) -> QColor {
         switch (tc.type) {
         case ColorType::Default:
@@ -212,7 +227,12 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
     QColor fg = resolveColor(attr.fg, true);
     QColor bg = resolveColor(attr.bg, false);
 
-    if (attr.inverse || isCursor) {
+    // For filled cursor shapes, invert fg/bg.
+    const bool filledCursor = isCursor && (
+        _cursorShape == CursorShape::FilledBox ||
+        _cursorShape == CursorShape::Vintage);
+
+    if (attr.inverse || filledCursor) {
         std::swap(fg, bg);
     }
     if (attr.invisible) {
@@ -222,27 +242,21 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
         fg.setAlpha(128);
     }
 
-    // Background fill (skip if default to avoid over-drawing).
-    if (bg != _colorScheme.background || isCursor) {
+    // Background fill.
+    if (bg != _colorScheme.background || filledCursor) {
         p.fillRect(rect, bg);
     }
 
-    if (cell.ch == U' ' || cell.ch == 0) {
-        if (attr.underline) {
-            p.setPen(fg);
-            p.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom());
-        }
-        return;
+    if (cell.ch != U' ' && cell.ch != 0) {
+        QFont f = _font;
+        if (attr.bold)   { f.setBold(true); }
+        if (attr.italic) { f.setItalic(true); }
+        p.setFont(f);
+        p.setPen(fg);
+
+        const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&cell.ch), 1);
+        p.drawText(rect.left(), rect.top() + _baselineOffset, text);
     }
-
-    QFont f = _font;
-    if (attr.bold)   { f.setBold(true); }
-    if (attr.italic) { f.setItalic(true); }
-    p.setFont(f);
-    p.setPen(fg);
-
-    const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&cell.ch), 1);
-    p.drawText(rect.left(), rect.top() + _baselineOffset, text);
 
     if (attr.underline) {
         p.setPen(fg);
@@ -254,6 +268,33 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
         p.setPen(fg);
         p.drawLine(rect.left(), midY, rect.right(), midY);
     }
+
+    // Draw non-filled cursor shapes on top of the rendered cell.
+    if (isCursor && !filledCursor) {
+        _paintCursor(p, rect, _cursorColorOverride.value_or(_colorScheme.foreground));
+    }
+}
+
+void TerminalWidget::_paintCursor(QPainter& p, const QRect& r, const QColor& color) const
+{
+    p.save();
+    p.setPen(color);
+    switch (_cursorShape) {
+    case CursorShape::Bar:
+        p.fillRect(QRect(r.left(), r.top(), 2, r.height()), color);
+        break;
+    case CursorShape::Underscore: {
+        const int barH = std::max(1, r.height() * _cursorHeight / 100);
+        p.fillRect(QRect(r.left(), r.bottom() - barH + 1, r.width(), barH), color);
+        break;
+    }
+    case CursorShape::EmptyBox:
+        p.drawRect(r.adjusted(0, 0, -1, -1));
+        break;
+    default:
+        break;
+    }
+    p.restore();
 }
 
 // ── Input ────────────────────────────────────────────────────────────────────
@@ -355,8 +396,8 @@ void TerminalWidget::resizeEvent(QResizeEvent* event)
 
 void TerminalWidget::_recalcDimensions()
 {
-    const int vw = viewport()->width();
-    const int vh = viewport()->height();
+    const int vw = std::max(0, viewport()->width()  - 2 * _padding);
+    const int vh = std::max(0, viewport()->height() - 2 * _padding);
 
     const int newCols = std::max(1, vw / _cellW);
     const int newRows = std::max(1, vh / _cellH);

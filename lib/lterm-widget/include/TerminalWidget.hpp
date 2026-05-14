@@ -36,7 +36,7 @@ public:
     void Start(const QString& program = {}, const QStringList& args = {},
                const QString& workingDir = {});
 
-    /** Apply a full profile (font + color scheme + background). */
+    /** Apply a full profile (font + color scheme + background + cursor + padding). */
     void applyProfile(const Profile& profile, const ColorScheme& scheme);
 
     /** Replace just the color scheme. */
@@ -65,12 +65,13 @@ private:
 
     void _paintCell(QPainter& p, int row, int col, const TextCell& cell,
                     bool isCursor) const;
+    void _paintCursor(QPainter& p, const QRect& cellRect, const QColor& cursorColor) const;
 
     LTerminal* _terminal = nullptr;
 
     ColorScheme  _colorScheme;
     QPixmap      _bgPixmap;       // background image (null = none)
-    double       _bgOpacity = 0.0; // 0.0 = fully transparent (no image visible)
+    double       _bgOpacity = 0.0;
 
     QFont        _font;
     QFontMetricsF _fm;
@@ -80,10 +81,14 @@ private:
 
     int          _cols = 80;
     int          _rows = 24;
+    int          _padding = 0;       // px padding around the terminal grid
 
     int          _scrollOffset = 0;
 
     bool         _cursorVisible = true;
+    CursorShape  _cursorShape   = CursorShape::Bar;
+    int          _cursorHeight  = 25;  // % for Underscore shape
+    std::optional<QColor> _cursorColorOverride;
     QTimer*      _cursorBlinkTimer = nullptr;
 
     bool         _repaintPending = false;

@@ -3,9 +3,11 @@ cmake_minimum_required(VERSION 3.21)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 
 add_library(lterm-settings STATIC
+    include/GlobalSettings.hpp
     include/LTermSettings.hpp
     include/ColorScheme.hpp
     include/Profile.hpp
+    src/GlobalSettings.cpp
     src/ColorScheme.cpp
     src/Profile.cpp
     src/LTermSettings.cpp

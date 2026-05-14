@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ColorScheme.hpp"
+#include "GlobalSettings.hpp"
 #include "Profile.hpp"
 
 #include <QObject>
@@ -13,7 +14,7 @@
 namespace LTerm {
 
 /**
- * LTermSettings — application-wide settings (profiles + color schemes).
+ * LTermSettings — application-wide settings (global + profiles + color schemes).
  *
  * Settings are stored as JSON at:
  *   $XDG_CONFIG_HOME/lterm/settings.json
@@ -33,18 +34,22 @@ public:
     /** Persist settings to disk. */
     void save() const;
 
-    // ── Profiles ──────────────────────────────────────────────────────────
+    // ── Global settings ───────────────────────────────────────────────────────
+    const GlobalSettings& global() const noexcept { return _global; }
+    void setGlobal(const GlobalSettings& g);
+
+    // ── Profiles ──────────────────────────────────────────────────────────────
     const QMap<QString, Profile>& profiles() const noexcept { return _profiles; }
     Profile profile(const QString& name) const;
     void setProfile(const Profile& p);
     void removeProfile(const QString& name);
 
-    QString defaultProfileName() const noexcept { return _defaultProfileName; }
+    QString defaultProfileName() const noexcept { return _global.defaultProfileName; }
     void setDefaultProfileName(const QString& name);
 
-    Profile defaultProfile() const { return profile(_defaultProfileName); }
+    Profile defaultProfile() const { return profile(_global.defaultProfileName); }
 
-    // ── Color Schemes ─────────────────────────────────────────────────────
+    // ── Color Schemes ─────────────────────────────────────────────────────────
     const QMap<QString, ColorScheme>& colorSchemes() const noexcept { return _colorSchemes; }
     ColorScheme colorScheme(const QString& name) const;
     void setColorScheme(const ColorScheme& cs);
@@ -58,7 +63,7 @@ private:
     QString _settingsPath() const;
     void _ensureDefaults();
 
-    QString _defaultProfileName { QStringLiteral("Default") };
+    GlobalSettings             _global;
     QMap<QString, Profile>     _profiles;
     QMap<QString, ColorScheme> _colorSchemes;
 };
