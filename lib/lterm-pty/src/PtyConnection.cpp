@@ -74,6 +74,8 @@ namespace LTerm
             if (!workingDir.empty()) {
                 chdir(workingDir.c_str());
             }
+            setenv("TERM", "xterm-256color", 1);
+            setenv("COLORTERM", "truecolor", 1);
             execl(shell, shell, nullptr);
             _exit(1);
         }

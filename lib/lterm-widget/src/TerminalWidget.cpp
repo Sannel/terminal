@@ -3,8 +3,13 @@
 
 #include "TerminalWidget.hpp"
 
+#include <QApplication>
+#include <QClipboard>
+#include <QContextMenuEvent>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
@@ -76,6 +81,7 @@ TerminalWidget::TerminalWidget(QWidget* parent) :
     // Vertical scrollbar only.
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    viewport()->setMouseTracking(true);
     verticalScrollBar()->setSingleStep(1);
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
         const int maxVal = verticalScrollBar()->maximum();
@@ -244,6 +250,11 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
         fg.setAlpha(128);
     }
 
+    // Selection highlight overrides background (cursor cells are exempt).
+    if (!isCursor && _cellInSelection(row, col)) {
+        bg = _colorScheme.selectionBg;
+    }
+
     // Background fill.
     if (bg != _colorScheme.background || filledCursor) {
         p.fillRect(rect, bg);
@@ -303,30 +314,34 @@ void TerminalWidget::_paintCursor(QPainter& p, const QRect& r, const QColor& col
 
 void TerminalWidget::keyPressEvent(QKeyEvent* event)
 {
-    // Scroll back to live view on any key.
-    if (_scrollOffset != 0) {
-        _scrollOffset = 0;
-        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-    }
-
     const Qt::KeyboardModifiers mod = event->modifiers();
     const bool ctrl  = mod.testFlag(Qt::ControlModifier);
     const bool shift = mod.testFlag(Qt::ShiftModifier);
     const bool alt   = mod.testFlag(Qt::AltModifier);
 
+    // Clipboard ops handled BEFORE scroll-reset so the user can copy/paste
+    // without losing their scroll position or accidentally returning to live view.
+    if (ctrl && shift) {
+        if (event->key() == Qt::Key_C) {
+            _copySelection();
+            return;
+        }
+        if (event->key() == Qt::Key_V) {
+            const QString text = QGuiApplication::clipboard()->text();
+            if (!text.isEmpty()) {
+                _terminal->SendInput(text.toUtf8().toStdString());
+            }
+            return;
+        }
+    }
+
+    // Scroll back to live view on any other key.
+    if (_scrollOffset != 0) {
+        _scrollOffset = 0;
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    }
+
     QString seq;
-
-    // Ctrl+Shift+C / Ctrl+Shift+V — clipboard (not sent to terminal).
-    if (ctrl && shift && event->key() == Qt::Key_C) {
-        // TODO: copy selection
-        return;
-    }
-    if (ctrl && shift && event->key() == Qt::Key_V) {
-        // TODO: paste from clipboard
-        return;
-    }
-
-    // Ctrl+key → \x01–\x1A range.
     if (ctrl && !shift && !alt) {
         const int key = event->key();
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
@@ -475,6 +490,184 @@ void TerminalWidget::_scheduleRepaint()
     if (!_repaintPending) {
         _repaintPending = true;
         _repaintCoalescer->start();
+    }
+}
+
+// ── Selection ────────────────────────────────────────────────────────────────
+
+TerminalWidget::SelPoint TerminalWidget::_pixelToCell(const QPoint& pos) const
+{
+    const int col = std::clamp((pos.x() - _padding) / _cellW, 0, _cols - 1);
+    const int row = std::clamp((pos.y() - _padding) / _cellH, 0, _rows - 1);
+    return { row, col };
+}
+
+bool TerminalWidget::_cellInSelection(int row, int col) const
+{
+    if (!_hasSelection) return false;
+
+    SelPoint start = _selAnchor;
+    SelPoint end   = _selCaret;
+    if (start.row > end.row || (start.row == end.row && start.col > end.col)) {
+        std::swap(start, end);
+    }
+
+    if (row < start.row || row > end.row) return false;
+    if (row == start.row && col < start.col) return false;
+    if (row == end.row   && col > end.col)   return false;
+    return true;
+}
+
+QString TerminalWidget::_selectionText() const
+{
+    if (!_hasSelection) return {};
+
+    SelPoint start = _selAnchor;
+    SelPoint end   = _selCaret;
+    if (start.row > end.row || (start.row == end.row && start.col > end.col)) {
+        std::swap(start, end);
+    }
+
+    const auto& buf  = _terminal->Buffer();
+    const int sbRows = static_cast<int>(buf.Scrollback().size());
+
+    QString result;
+    for (int row = start.row; row <= end.row; ++row) {
+        const int startCol = (row == start.row) ? start.col : 0;
+        const int endCol   = (row == end.row)   ? end.col   : (_cols - 1);
+        const int bufRow   = row - _scrollOffset;
+
+        QString line;
+        for (int col = startCol; col <= endCol; ++col) {
+            const TextCell* cell = nullptr;
+            TextCell dummy{};
+            if (bufRow < 0) {
+                const int sbIdx = sbRows + bufRow;
+                if (sbIdx >= 0 && sbIdx < static_cast<int>(buf.Scrollback().size())) {
+                    const auto& sbLine = buf.Scrollback()[sbIdx];
+                    cell = (col < static_cast<int>(sbLine.size())) ? &sbLine[col] : &dummy;
+                } else {
+                    cell = &dummy;
+                }
+            } else if (bufRow < buf.Rows()) {
+                cell = &buf.CellAt(bufRow, col);
+            } else {
+                cell = &dummy;
+            }
+
+            if (cell->ch != 0 && cell->ch != U' ') {
+                line += QString::fromUcs4(reinterpret_cast<const char32_t*>(&cell->ch), 1);
+            } else {
+                line += QLatin1Char(' ');
+            }
+        }
+
+        // Trim trailing spaces from each line.
+        while (!line.isEmpty() && line.back() == QLatin1Char(' ')) {
+            line.chop(1);
+        }
+
+        if (row < end.row) {
+            result += line + QLatin1Char('\n');
+        } else {
+            result += line;
+        }
+    }
+
+    return result;
+}
+
+void TerminalWidget::_copySelection()
+{
+    if (!_hasSelection) return;
+    const QString text = _selectionText();
+    if (text.isEmpty()) return;
+
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    clipboard->setText(text, QClipboard::Clipboard);
+    if (clipboard->supportsSelection()) {
+        clipboard->setText(text, QClipboard::Selection);
+    }
+}
+
+void TerminalWidget::_showContextMenu(const QPoint& globalPos)
+{
+    QMenu menu(this);
+    QAction* copyAction  = menu.addAction(QStringLiteral("Copy"));
+    QAction* pasteAction = menu.addAction(QStringLiteral("Paste"));
+    copyAction->setEnabled(_hasSelection);
+
+    const QAction* chosen = menu.exec(globalPos);
+    if (chosen == copyAction) {
+        _copySelection();
+    } else if (chosen == pasteAction) {
+        const QString text = QGuiApplication::clipboard()->text();
+        if (!text.isEmpty()) {
+            _terminal->SendInput(text.toUtf8().toStdString());
+        }
+    }
+}
+
+void TerminalWidget::_onViewportMousePress(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        _selAnchor    = _pixelToCell(event->pos());
+        _selCaret     = _selAnchor;
+        _hasSelection = false;
+        _selecting    = true;
+        viewport()->update();
+    }
+}
+
+void TerminalWidget::_onViewportMouseMove(QMouseEvent* event)
+{
+    if (_selecting && (event->buttons() & Qt::LeftButton)) {
+        _selCaret     = _pixelToCell(event->pos());
+        _hasSelection = (_selCaret.row != _selAnchor.row || _selCaret.col != _selAnchor.col);
+        viewport()->update();
+    }
+}
+
+void TerminalWidget::_onViewportMouseRelease(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && _selecting) {
+        _selCaret     = _pixelToCell(event->pos());
+        _hasSelection = (_selCaret.row != _selAnchor.row || _selCaret.col != _selAnchor.col);
+        _selecting    = false;
+
+        // Auto-copy to X11 primary selection on release.
+        if (_hasSelection) {
+            QClipboard* clipboard = QGuiApplication::clipboard();
+            if (clipboard->supportsSelection()) {
+                clipboard->setText(_selectionText(), QClipboard::Selection);
+            }
+        }
+        viewport()->update();
+    }
+}
+
+void TerminalWidget::_onViewportContextMenu(QContextMenuEvent* event)
+{
+    _showContextMenu(event->globalPos());
+}
+
+bool TerminalWidget::viewportEvent(QEvent* event)
+{
+    switch (event->type()) {
+    case QEvent::MouseButtonPress:
+        _onViewportMousePress(static_cast<QMouseEvent*>(event));
+        return true;
+    case QEvent::MouseMove:
+        _onViewportMouseMove(static_cast<QMouseEvent*>(event));
+        return true;
+    case QEvent::MouseButtonRelease:
+        _onViewportMouseRelease(static_cast<QMouseEvent*>(event));
+        return true;
+    case QEvent::ContextMenu:
+        _onViewportContextMenu(static_cast<QContextMenuEvent*>(event));
+        return true;
+    default:
+        return QAbstractScrollArea::viewportEvent(event);
     }
 }
 

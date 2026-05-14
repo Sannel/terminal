@@ -23,6 +23,7 @@ namespace LTerm {
  *  - Resize: recalculate rows/cols from pixel size, notify LTerminal.
  *  - Scrollback: translate scrollbar position → buffer view offset.
  *  - Cursor blink via a QTimer.
+ *  - Mouse selection and right-click copy/paste context menu.
  */
 class TerminalWidget : public QAbstractScrollArea
 {
@@ -54,6 +55,7 @@ protected:
     void focusInEvent(QFocusEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    bool viewportEvent(QEvent* event) override;
 
 private:
     void _onRepaintNeeded();
@@ -67,6 +69,25 @@ private:
                     bool isCursor) const;
     void _paintCursor(QPainter& p, const QRect& cellRect, const QColor& cursorColor) const;
 
+    // ── Selection ────────────────────────────────────────────────────────────
+    struct SelPoint { int row = 0; int col = 0; };
+    SelPoint _pixelToCell(const QPoint& pos) const;
+    bool     _cellInSelection(int row, int col) const;
+    QString  _selectionText() const;
+    void     _copySelection();
+    void     _showContextMenu(const QPoint& globalPos);
+
+    void _onViewportMousePress(QMouseEvent* event);
+    void _onViewportMouseMove(QMouseEvent* event);
+    void _onViewportMouseRelease(QMouseEvent* event);
+    void _onViewportContextMenu(QContextMenuEvent* event);
+
+    SelPoint _selAnchor;
+    SelPoint _selCaret;
+    bool     _hasSelection = false;
+    bool     _selecting    = false;
+
+    // ── Terminal state ───────────────────────────────────────────────────────
     LTerminal* _terminal = nullptr;
 
     ColorScheme  _colorScheme;
