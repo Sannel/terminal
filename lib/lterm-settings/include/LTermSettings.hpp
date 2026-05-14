@@ -53,6 +53,7 @@ public:
     const QMap<QString, ColorScheme>& colorSchemes() const noexcept { return _colorSchemes; }
     ColorScheme colorScheme(const QString& name) const;
     void setColorScheme(const ColorScheme& cs);
+    void removeColorScheme(const QString& name);
 
 signals:
     void settingsChanged();

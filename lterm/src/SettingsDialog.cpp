@@ -95,6 +95,17 @@ void SettingsDialog::_connectColorBtn(QPushButton* btn, std::optional<QColor>& s
     _updateColorBtn(btn, storage);
 }
 
+void SettingsDialog::_updateSolidColorBtn(QPushButton* btn, const QColor& c)
+{
+    const QString contrast = (c.lightness() > 128) ? QStringLiteral("black")
+                                                    : QStringLiteral("white");
+    btn->setStyleSheet(QStringLiteral(
+        "QPushButton { background-color: %1; color: %2; border: 1px solid palette(mid);"
+        " border-radius: 3px; padding: 2px 6px; }")
+        .arg(c.name(QColor::HexRgb), contrast));
+    btn->setText(c.name(QColor::HexRgb));
+}
+
 // ── Constructor ───────────────────────────────────────────────────────────────
 
 SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent)
@@ -105,6 +116,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent)
 
     auto& s = LTermSettings::instance();
     _localProfiles = s.profiles();
+    _localSchemes  = s.colorSchemes();
     _localGlobal   = s.global();
 
     // ── Top-level layout: nav | stack ────────────────────────────────────────
@@ -725,66 +737,406 @@ void SettingsDialog::_buildProfilePage()
 void SettingsDialog::_buildColorSchemesPage()
 {
     auto* page = new QWidget;
-    auto* vbox = new QVBoxLayout(page);
-    vbox->setContentsMargins(32, 24, 32, 24);
-    vbox->setSpacing(16);
-    vbox->addWidget(makeSectionTitle(i18n("Color Schemes")));
+    auto* hbox = new QHBoxLayout(page);
+    hbox->setContentsMargins(0, 0, 0, 0);
+    hbox->setSpacing(0);
 
-    auto* hbox = new QHBoxLayout;
+    // ── Left panel: scheme list + action buttons ─────────────────────────────
+    auto* leftPanel = new QWidget;
+    leftPanel->setFixedWidth(190);
+    auto* leftLayout = new QVBoxLayout(leftPanel);
+    leftLayout->setContentsMargins(12, 16, 8, 16);
+    leftLayout->setSpacing(6);
 
-    // Scheme list
-    auto* schemeList = new QListWidget;
-    schemeList->setMaximumWidth(200);
-    const auto& schemes = LTermSettings::instance().colorSchemes();
-    for (const QString& name : schemes.keys()) {
-        schemeList->addItem(name);
+    auto* listTitle = makeSectionTitle(i18n("Color Schemes"));
+    leftLayout->addWidget(listTitle);
+
+    _schemeListWidget = new QListWidget;
+    _schemeListWidget->setFrameShape(QFrame::StyledPanel);
+    for (const QString& name : _localSchemes.keys()) {
+        _schemeListWidget->addItem(name);
     }
-    hbox->addWidget(schemeList);
+    leftLayout->addWidget(_schemeListWidget, 1);
 
-    // Preview panel
-    auto* previewWidget = new QWidget;
-    auto* previewLayout = new QVBoxLayout(previewWidget);
-    previewLayout->setContentsMargins(16, 0, 0, 0);
-    auto* previewLabel = new QLabel(i18n("Select a scheme to preview"));
-    previewLabel->setAlignment(Qt::AlignTop);
-    previewLayout->addWidget(previewLabel);
+    auto* schemeBtnRow = new QHBoxLayout;
+    schemeBtnRow->setSpacing(4);
+    _addSchemeBtn = new QPushButton;
+    _addSchemeBtn->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
+    _addSchemeBtn->setToolTip(i18n("Add new scheme"));
+    _duplicateSchemeBtn = new QPushButton;
+    _duplicateSchemeBtn->setIcon(QIcon::fromTheme(QStringLiteral("edit-copy")));
+    _duplicateSchemeBtn->setToolTip(i18n("Duplicate selected scheme"));
+    _duplicateSchemeBtn->setEnabled(false);
+    _deleteSchemeBtn = new QPushButton;
+    _deleteSchemeBtn->setIcon(QIcon::fromTheme(QStringLiteral("list-remove")));
+    _deleteSchemeBtn->setToolTip(i18n("Delete selected scheme (built-in schemes cannot be deleted)"));
+    _deleteSchemeBtn->setEnabled(false);
+    schemeBtnRow->addWidget(_addSchemeBtn);
+    schemeBtnRow->addWidget(_duplicateSchemeBtn);
+    schemeBtnRow->addWidget(_deleteSchemeBtn);
+    leftLayout->addLayout(schemeBtnRow);
+    hbox->addWidget(leftPanel);
 
-    auto* swatchArea = new QWidget;
-    swatchArea->setMinimumHeight(80);
-    swatchArea->setVisible(false);
-    previewLayout->addWidget(swatchArea);
-    previewLayout->addStretch();
-    hbox->addWidget(previewWidget, 1);
+    // Vertical separator
+    auto* sep = new QFrame;
+    sep->setFrameShape(QFrame::VLine);
+    sep->setFrameShadow(QFrame::Sunken);
+    hbox->addWidget(sep);
 
-    connect(schemeList, &QListWidget::currentTextChanged, this,
-        [previewLabel, swatchArea, &schemes](const QString& name) {
-            if (!schemes.contains(name)) {
-                previewLabel->setText(i18n("Select a scheme to preview"));
-                swatchArea->setVisible(false);
-                return;
+    // ── Right panel: scrollable scheme editor ────────────────────────────────
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    _schemeEditorPanel = new QWidget;
+    auto* editorLayout = new QVBoxLayout(_schemeEditorPanel);
+    editorLayout->setContentsMargins(24, 16, 24, 24);
+    editorLayout->setSpacing(16);
+
+    // Name field
+    auto* nameForm = new QFormLayout;
+    nameForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    nameForm->setSpacing(8);
+    _schemeNameEdit = new QLineEdit;
+    nameForm->addRow(i18n("Name:"), _schemeNameEdit);
+    editorLayout->addLayout(nameForm);
+
+    // ── Core colors ───────────────────────────────────────────────────────────
+    auto* coreGroup = new QGroupBox(i18n("Core Colors"));
+    auto* coreGrid = new QGridLayout(coreGroup);
+    coreGrid->setSpacing(10);
+    coreGrid->setContentsMargins(12, 12, 12, 12);
+
+    // Helper: add a labeled color button to the grid at (row=1, col)
+    auto addCoreBtn = [&](const QString& label, int col, QPushButton*& btnMember, QColor& colorMember) {
+        auto* lbl = new QLabel(label);
+        lbl->setAlignment(Qt::AlignCenter);
+        QFont sf = lbl->font();
+        sf.setPointSizeF(sf.pointSizeF() * 0.85);
+        lbl->setFont(sf);
+        btnMember = new QPushButton;
+        btnMember->setFixedSize(96, 36);
+        coreGrid->addWidget(lbl, 0, col);
+        coreGrid->addWidget(btnMember, 1, col);
+        // Capture raw pointer + pointer-to-member to avoid dangling refs
+        QPushButton* b = btnMember;
+        QColor* c = &colorMember;
+        connect(b, &QPushButton::clicked, this, [this, b, c]() {
+            const QColor picked = QColorDialog::getColor(*c, this, i18n("Choose Color"));
+            if (picked.isValid()) {
+                *c = picked;
+                _updateSolidColorBtn(b, *c);
+                _refreshSchemePreview();
             }
-            const ColorScheme& cs = schemes[name];
-            // Build a color swatch row as HTML
-            QString html = QStringLiteral("<b>%1</b><br>").arg(name.toHtmlEscaped());
-            html += QStringLiteral("FG: <span style='color:%1'>%1</span> &nbsp; "
-                                   "BG: <span style='color:%2; background:%2'>%2</span><br>")
-                    .arg(cs.foreground.name(), cs.background.name());
-            html += QStringLiteral("<br>ANSI colors:<br>");
-            for (int i = 0; i < 16; ++i) {
-                const QColor& c = cs.ansiColors[i];
-                html += QStringLiteral(
-                    "<span style='background:%1; color:%2; padding:2px 6px; margin:1px;'>%3</span>")
-                        .arg(c.name(),
-                             c.lightness() > 128 ? QStringLiteral("black") : QStringLiteral("white"),
-                             QString::number(i));
+        });
+    };
+
+    addCoreBtn(i18n("Foreground"),    0, _schemeFgBtn,     _schemeFg);
+    addCoreBtn(i18n("Background"),    1, _schemeBgBtn,     _schemeBg);
+    addCoreBtn(i18n("Cursor"),        2, _schemeCursorBtn, _schemeCursor);
+    addCoreBtn(i18n("Selection Bg"),  3, _schemeSelBgBtn,  _schemeSelBg);
+    coreGrid->setColumnStretch(4, 1);
+    editorLayout->addWidget(coreGroup);
+
+    // ── ANSI color groups ─────────────────────────────────────────────────────
+    static const char* const ansiLabels[16] = {
+        "Black",    "Red",        "Green",      "Yellow",
+        "Blue",     "Magenta",    "Cyan",       "White",
+        "Br Black", "Br Red",     "Br Green",   "Br Yellow",
+        "Br Blue",  "Br Magenta", "Br Cyan",    "Br White",
+    };
+
+    for (int group = 0; group < 2; ++group) {
+        const int base = group * 8;
+        auto* grp = new QGroupBox(group == 0 ? i18n("Normal Colors") : i18n("Bright Colors"));
+        auto* grid = new QGridLayout(grp);
+        grid->setSpacing(8);
+        grid->setContentsMargins(12, 12, 12, 12);
+
+        for (int row = 0; row < 2; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                const int ai = base + row * 4 + col;
+                auto* lbl = new QLabel(QString::fromLatin1(ansiLabels[ai]));
+                lbl->setAlignment(Qt::AlignCenter);
+                QFont sf = lbl->font();
+                sf.setPointSizeF(sf.pointSizeF() * 0.80);
+                lbl->setFont(sf);
+                _schemeAnsiBtn[ai] = new QPushButton;
+                _schemeAnsiBtn[ai]->setFixedSize(84, 32);
+                grid->addWidget(lbl,                  row * 2,     col);
+                grid->addWidget(_schemeAnsiBtn[ai],   row * 2 + 1, col);
+                connect(_schemeAnsiBtn[ai], &QPushButton::clicked, this, [this, ai]() {
+                    const QColor picked = QColorDialog::getColor(
+                        _schemeAnsi[ai], this, i18n("Choose Color"));
+                    if (picked.isValid()) {
+                        _schemeAnsi[ai] = picked;
+                        _updateSolidColorBtn(_schemeAnsiBtn[ai], _schemeAnsi[ai]);
+                        _refreshSchemePreview();
+                    }
+                });
             }
-            previewLabel->setText(html);
-            previewLabel->setVisible(true);
+        }
+        editorLayout->addWidget(grp);
+    }
+
+    // ── Preview ───────────────────────────────────────────────────────────────
+    auto* previewGroup = new QGroupBox(i18n("Preview"));
+    auto* previewVBox = new QVBoxLayout(previewGroup);
+    _schemePreviewLabel = new QLabel;
+    _schemePreviewLabel->setWordWrap(false);
+    _schemePreviewLabel->setTextFormat(Qt::RichText);
+    _schemePreviewLabel->setMinimumHeight(80);
+    _schemePreviewLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    previewVBox->addWidget(_schemePreviewLabel);
+    editorLayout->addWidget(previewGroup);
+    editorLayout->addStretch();
+
+    // Initially show placeholder until a scheme is selected
+    _schemeEditorPanel->setEnabled(false);
+    scroll->setWidget(_schemeEditorPanel);
+    hbox->addWidget(scroll, 1);
+
+    // ── Connections ───────────────────────────────────────────────────────────
+    connect(_schemeListWidget, &QListWidget::currentTextChanged, this,
+        [this](const QString& name) {
+            _saveEditorToScheme();
+            const bool valid = !name.isEmpty() && _localSchemes.contains(name);
+            _schemeEditorPanel->setEnabled(valid);
+            if (valid) _loadSchemeToEditor(name);
+            const bool isBuiltin = _isBuiltinScheme(name);
+            _deleteSchemeBtn->setEnabled(valid && !isBuiltin && _localSchemes.size() > 1);
+            _duplicateSchemeBtn->setEnabled(valid);
         });
 
-    vbox->addLayout(hbox, 1);
+    connect(_addSchemeBtn,       &QPushButton::clicked, this, &SettingsDialog::_addScheme);
+    connect(_duplicateSchemeBtn, &QPushButton::clicked, this, &SettingsDialog::_duplicateScheme);
+    connect(_deleteSchemeBtn,    &QPushButton::clicked, this, &SettingsDialog::_deleteScheme);
+
     _stack->addWidget(page); // index 4
+
+    // Auto-select first scheme
+    if (_schemeListWidget->count() > 0) {
+        _schemeListWidget->setCurrentRow(0);
+    }
 }
+
+// ── Color scheme editor helpers ───────────────────────────────────────────────
+
+static bool isBuiltinSchemeName(const QString& name)
+{
+    return name == QLatin1String("Default")
+        || name == QLatin1String("One Dark")
+        || name == QLatin1String("Solarized Dark");
+}
+
+bool SettingsDialog::_isBuiltinScheme(const QString& name)
+{
+    return isBuiltinSchemeName(name);
+}
+
+void SettingsDialog::_loadSchemeToEditor(const QString& name)
+{
+    if (!_localSchemes.contains(name)) return;
+    _editingSchemeKey = name;
+
+    const ColorScheme& cs = _localSchemes[name];
+    _schemeNameEdit->setText(cs.name);
+    // Built-in names are not editable (they'd be recreated on next load anyway)
+    _schemeNameEdit->setReadOnly(isBuiltinSchemeName(name));
+
+    _schemeFg     = cs.foreground;   _updateSolidColorBtn(_schemeFgBtn,     _schemeFg);
+    _schemeBg     = cs.background;   _updateSolidColorBtn(_schemeBgBtn,     _schemeBg);
+    _schemeCursor = cs.cursor;       _updateSolidColorBtn(_schemeCursorBtn, _schemeCursor);
+    _schemeSelBg  = cs.selectionBg;  _updateSolidColorBtn(_schemeSelBgBtn,  _schemeSelBg);
+
+    for (int i = 0; i < 16; ++i) {
+        _schemeAnsi[i] = cs.ansiColors[i];
+        _updateSolidColorBtn(_schemeAnsiBtn[i], _schemeAnsi[i]);
+    }
+    _refreshSchemePreview();
+}
+
+void SettingsDialog::_saveEditorToScheme()
+{
+    if (_editingSchemeKey.isEmpty() || !_localSchemes.contains(_editingSchemeKey)) return;
+
+    const QString newName = _schemeNameEdit->text().trimmed();
+    if (newName.isEmpty()) return;
+
+    // Copy to avoid holding a reference across map mutations
+    ColorScheme cs = _localSchemes[_editingSchemeKey];
+    cs.foreground  = _schemeFg;
+    cs.background  = _schemeBg;
+    cs.cursor      = _schemeCursor;
+    cs.selectionBg = _schemeSelBg;
+    for (int i = 0; i < 16; ++i) cs.ansiColors[i] = _schemeAnsi[i];
+
+    const bool renamed = (newName != _editingSchemeKey)
+                      && !isBuiltinSchemeName(_editingSchemeKey);
+    if (renamed) {
+        if (_localSchemes.contains(newName)) {
+            // Conflict — revert the name field
+            _schemeNameEdit->setText(_editingSchemeKey);
+        } else {
+            cs.name = newName;
+            _localSchemes.remove(_editingSchemeKey);
+            _localSchemes[newName] = cs;
+            // Repair profile references to old name
+            for (auto& p : _localProfiles) {
+                if (p.colorScheme == _editingSchemeKey) p.colorScheme = newName;
+            }
+            _editingSchemeKey = newName;
+            _rebuildSchemeList();
+            _syncSchemeCombo();
+        }
+    } else {
+        cs.name = _editingSchemeKey;
+        _localSchemes[_editingSchemeKey] = cs;
+    }
+}
+
+void SettingsDialog::_refreshSchemePreview()
+{
+    const QString bg  = _schemeBg.name(QColor::HexRgb);
+    const QString fg  = _schemeFg.name(QColor::HexRgb);
+    const QString cur = _schemeCursor.name(QColor::HexRgb);
+    const QString sel = _schemeSelBg.name(QColor::HexRgb);
+
+    static const char* const shortLabels[16] = {
+        "Blk","Red","Grn","Yel","Blu","Mag","Cyn","Wht",
+        "bBlk","bRed","bGrn","bYel","bBlu","bMag","bCyn","bWht"
+    };
+
+    QString html = QStringLiteral(
+        "<span style='background:%1; color:%2; font-family:monospace;"
+        " font-size:12px; display:block; padding:10px 12px;'>").arg(bg, fg);
+
+    // ANSI swatches — two rows of 8
+    for (int row = 0; row < 2; ++row) {
+        for (int i = row * 8; i < row * 8 + 8; ++i) {
+            const QColor& c  = _schemeAnsi[i];
+            const QString tc = (c.lightness() > 100)
+                ? QStringLiteral("#000000") : QStringLiteral("#ffffff");
+            html += QStringLiteral(
+                "<span style='background:%1;color:%2;padding:1px 5px;margin:1px;"
+                "border-radius:2px;'>%3</span> ")
+                .arg(c.name(QColor::HexRgb), tc, QString::fromLatin1(shortLabels[i]));
+        }
+        html += QStringLiteral("<br/>");
+    }
+
+    // Sample text row
+    html += QStringLiteral(
+        "<br/><span style='color:%1;'>%2</span>"
+        " &nbsp;<span style='background:%3;color:%1;padding:0 4px;'>%4</span>"
+        " &nbsp;<span style='background:%5;color:#ffffff;padding:0 4px;'>%6</span>"
+        "</span>")
+        .arg(fg,
+             i18n("Foreground"),
+             bg,  i18n("Background"),
+             sel, i18n("Selection"));
+
+    _schemePreviewLabel->setText(html);
+}
+
+void SettingsDialog::_rebuildSchemeList()
+{
+    const QString current = _editingSchemeKey;
+    _schemeListWidget->blockSignals(true);
+    _schemeListWidget->clear();
+    for (const QString& name : _localSchemes.keys()) {
+        _schemeListWidget->addItem(name);
+    }
+    _schemeListWidget->blockSignals(false);
+    if (!current.isEmpty()) {
+        const auto items = _schemeListWidget->findItems(current, Qt::MatchExactly);
+        if (!items.isEmpty()) {
+            _schemeListWidget->blockSignals(true);
+            _schemeListWidget->setCurrentItem(items.first());
+            _schemeListWidget->blockSignals(false);
+        }
+    }
+}
+
+void SettingsDialog::_addScheme()
+{
+    bool ok = false;
+    QString name = QInputDialog::getText(this, i18n("New Color Scheme"),
+        i18n("Scheme name:"), QLineEdit::Normal, i18n("New Scheme"), &ok);
+    if (!ok) return;
+    name = name.trimmed();
+    if (name.isEmpty()) {
+        QMessageBox::warning(this, i18n("Invalid Name"), i18n("Name cannot be empty."));
+        return;
+    }
+    if (_localSchemes.contains(name)) {
+        QMessageBox::warning(this, i18n("Duplicate Name"),
+            i18n("A scheme named \"%1\" already exists.").arg(name));
+        return;
+    }
+    ColorScheme cs;
+    cs.name = name;
+    _localSchemes[name] = cs;
+    _rebuildSchemeList();
+    _syncSchemeCombo();
+    const auto items = _schemeListWidget->findItems(name, Qt::MatchExactly);
+    if (!items.isEmpty()) _schemeListWidget->setCurrentItem(items.first());
+}
+
+void SettingsDialog::_duplicateScheme()
+{
+    const QString source = _schemeListWidget->currentItem()
+        ? _schemeListWidget->currentItem()->text() : QString{};
+    if (source.isEmpty() || !_localSchemes.contains(source)) return;
+
+    // Generate a unique name
+    QString newName = i18n("Copy of %1").arg(source);
+    if (_localSchemes.contains(newName)) {
+        int n = 2;
+        while (_localSchemes.contains(QStringLiteral("%1 %2").arg(newName).arg(n))) ++n;
+        newName = QStringLiteral("%1 %2").arg(newName).arg(n);
+    }
+
+    ColorScheme cs = _localSchemes[source];
+    cs.name = newName;
+    _localSchemes[newName] = cs;
+    _rebuildSchemeList();
+    _syncSchemeCombo();
+    const auto items = _schemeListWidget->findItems(newName, Qt::MatchExactly);
+    if (!items.isEmpty()) _schemeListWidget->setCurrentItem(items.first());
+}
+
+void SettingsDialog::_deleteScheme()
+{
+    const QString name = _schemeListWidget->currentItem()
+        ? _schemeListWidget->currentItem()->text() : QString{};
+    if (name.isEmpty() || isBuiltinSchemeName(name)) return;
+    if (_localSchemes.size() <= 1) {
+        QMessageBox::information(this, i18n("Cannot Delete"),
+            i18n("At least one color scheme must exist."));
+        return;
+    }
+    const int ret = QMessageBox::question(this, i18n("Delete Scheme"),
+        i18n("Delete color scheme \"%1\"? This cannot be undone.").arg(name),
+        QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) return;
+
+    _localSchemes.remove(name);
+    // Repair profile references to deleted scheme
+    const QString fallback = _localSchemes.firstKey();
+    for (auto& p : _localProfiles) {
+        if (p.colorScheme == name) p.colorScheme = fallback;
+    }
+    _editingSchemeKey.clear();
+    _schemeEditorPanel->setEnabled(false);
+    _rebuildSchemeList();
+    _syncSchemeCombo();
+
+    // Select first remaining scheme
+    if (_schemeListWidget->count() > 0) {
+        _schemeListWidget->setCurrentRow(0);
+    }
+}
+
 
 // ── Nav item click handling ────────────────────────────────────────────────────
 
@@ -794,8 +1146,9 @@ void SettingsDialog::_onNavItemClicked(QListWidgetItem* item)
     const int type = item->data(NavTypeRole).toInt();
     if (type == NavHeader) return;
 
-    // Always save the profile form if a profile was being edited
+    // Always save the profile form and scheme editor if they were being edited
     _saveCurrentFormToProfile();
+    _saveEditorToScheme();
 
     switch (type) {
     case NavStartup:
@@ -1146,11 +1499,26 @@ void SettingsDialog::_syncDefaultCombo()
     _defaultCombo->setCurrentIndex(idx >= 0 ? idx : 0);
 }
 
+void SettingsDialog::_syncSchemeCombo()
+{
+    if (!_schemeCombo) return;
+    const QString current = _schemeCombo->currentText();
+    _schemeCombo->blockSignals(true);
+    _schemeCombo->clear();
+    for (const QString& name : _localSchemes.keys()) {
+        _schemeCombo->addItem(name);
+    }
+    _schemeCombo->blockSignals(false);
+    const int idx = _schemeCombo->findText(current);
+    _schemeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+}
+
 // ── Save ──────────────────────────────────────────────────────────────────────
 
 void SettingsDialog::_save()
 {
     _saveCurrentFormToProfile();
+    _saveEditorToScheme();
     _saveGlobalForms();
 
     auto& s = LTermSettings::instance();
@@ -1166,6 +1534,19 @@ void SettingsDialog::_save()
     // Apply all local profiles
     for (const Profile& p : std::as_const(_localProfiles)) {
         s.setProfile(p);
+    }
+
+    // Remove color schemes deleted in the dialog
+    const QList<QString> existingSchemeKeys = s.colorSchemes().keys();
+    for (const QString& name : existingSchemeKeys) {
+        if (!_localSchemes.contains(name)) {
+            s.removeColorScheme(name);
+        }
+    }
+
+    // Apply all local color schemes
+    for (const ColorScheme& cs : std::as_const(_localSchemes)) {
+        s.setColorScheme(cs);
     }
 
     // Apply global settings

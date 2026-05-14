@@ -173,6 +173,12 @@ void LTermSettings::setColorScheme(const ColorScheme& cs)
     emit settingsChanged();
 }
 
+void LTermSettings::removeColorScheme(const QString& name)
+{
+    _colorSchemes.remove(name);
+    emit settingsChanged();
+}
+
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 void LTermSettings::_ensureDefaults()

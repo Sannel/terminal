@@ -1,6 +1,3 @@
-// Copyright (c) Sannel LLC.
-// Licensed under the MIT license.
-
 #pragma once
 
 #include "LTermSettings.hpp"
@@ -8,6 +5,7 @@
 #include <QColor>
 #include <QDialog>
 #include <QMap>
+#include <array>
 #include <optional>
 
 class QCheckBox;
@@ -67,22 +65,38 @@ private:
     void _loadGlobalToInteraction();
     void _loadGlobalToAppearance();
     void _syncDefaultCombo();
+    void _syncSchemeCombo();
 
-    // ── Color button helpers ──────────────────────────────────────────────────
+    // ── Color button helpers (optional QColor) ────────────────────────────────
     void _connectColorBtn(QPushButton* btn, std::optional<QColor>& storage);
     static void _updateColorBtn(QPushButton* btn, const std::optional<QColor>& c);
     static std::optional<QColor> _pickColor(QPushButton* btn,
                                             const std::optional<QColor>& current);
+
+    // ── Solid color button helpers (required QColor, for scheme editor) ────────
+    static void _updateSolidColorBtn(QPushButton* btn, const QColor& c);
 
     // ── Nav item factories ────────────────────────────────────────────────────
     QListWidgetItem* _addNavHeader(const QString& text);
     QListWidgetItem* _addNavItem(const QString& text, const QIcon& icon,
                                   const QString& data, int indent = 0);
 
+    // ── Color scheme editor helpers ───────────────────────────────────────────
+    void _loadSchemeToEditor(const QString& name);
+    void _saveEditorToScheme();
+    void _refreshSchemePreview();
+    void _rebuildSchemeList();
+    void _addScheme();
+    void _duplicateScheme();
+    void _deleteScheme();
+    static bool _isBuiltinScheme(const QString& name);
+
     // ── Local working copies ──────────────────────────────────────────────────
-    QMap<QString, Profile> _localProfiles;
-    GlobalSettings         _localGlobal;
-    QString                _editingProfileKey;
+    QMap<QString, Profile>     _localProfiles;
+    QMap<QString, ColorScheme> _localSchemes;
+    GlobalSettings             _localGlobal;
+    QString                    _editingProfileKey;
+    QString                    _editingSchemeKey;
 
     // ── Shared layout ─────────────────────────────────────────────────────────
     QListWidget*    _nav   = nullptr;
@@ -154,6 +168,31 @@ private:
     QPushButton* _addEnvVarBtn        = nullptr;
     QPushButton* _removeEnvVarBtn     = nullptr;
     QPushButton* _deleteProfileBtn    = nullptr;
+
+    // ── Color scheme editor page ──────────────────────────────────────────────
+    QListWidget* _schemeListWidget   = nullptr;
+    QPushButton* _addSchemeBtn       = nullptr;
+    QPushButton* _duplicateSchemeBtn = nullptr;
+    QPushButton* _deleteSchemeBtn    = nullptr;
+    QWidget*     _schemeEditorPanel  = nullptr;
+    QLineEdit*   _schemeNameEdit     = nullptr;
+
+    // Core (required) colors for current scheme
+    QPushButton* _schemeFgBtn      = nullptr;
+    QPushButton* _schemeBgBtn      = nullptr;
+    QPushButton* _schemeCursorBtn  = nullptr;
+    QPushButton* _schemeSelBgBtn   = nullptr;
+    QColor       _schemeFg;
+    QColor       _schemeBg;
+    QColor       _schemeCursor;
+    QColor       _schemeSelBg;
+
+    // ANSI color buttons + storage [16]
+    std::array<QPushButton*, 16> _schemeAnsiBtn {};
+    std::array<QColor, 16>       _schemeAnsi   {};
+
+    QLabel* _schemePreviewLabel = nullptr;
 };
 
 } // namespace LTerm
+
