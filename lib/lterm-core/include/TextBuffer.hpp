@@ -94,6 +94,10 @@ namespace LTerm
         // Scrollback lines (index 0 = oldest).
         const std::vector<std::vector<TextCell>>& Scrollback() const noexcept { return _scrollback; }
 
+        // Cap the number of scrollback lines kept in memory.
+        // 0 = unlimited (default).
+        void SetMaxScrollback(int limit) noexcept { _maxScrollback = limit; }
+
     private:
         int _rows;
         int _cols;
@@ -102,6 +106,7 @@ namespace LTerm
 
         std::vector<std::vector<TextCell>> _screen;
         std::vector<std::vector<TextCell>> _scrollback;
+        int _maxScrollback = 0;  // 0 = unlimited
 
         CursorState _cursor;
         CursorState _savedCursor;

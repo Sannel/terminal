@@ -37,6 +37,9 @@ namespace LTerm
         // Notify the terminal that the visible area was resized.
         void Resize(int rows, int cols);
 
+        // Cap the scrollback buffer to the given number of lines (0 = unlimited).
+        void SetMaxScrollback(int limit) noexcept { _buffer->SetMaxScrollback(limit); }
+
         const TextBuffer& Buffer() const noexcept { return *_buffer; }
 
         int Rows() const noexcept { return _buffer->Rows(); }

@@ -346,6 +346,13 @@ namespace LTerm
             // Save scrolled-off line to scrollback.
             _scrollback.push_back(_screen[static_cast<size_t>(_scrollTop)]);
 
+            // Trim oldest scrollback lines if a cap is set.
+            if (_maxScrollback > 0 &&
+                static_cast<int>(_scrollback.size()) > _maxScrollback)
+            {
+                _scrollback.erase(_scrollback.begin());
+            }
+
             // Shift rows up within the scroll region.
             for (int r = _scrollTop; r < _scrollBottom; ++r)
             {

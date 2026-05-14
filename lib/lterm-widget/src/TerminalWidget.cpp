@@ -113,6 +113,12 @@ void TerminalWidget::applyProfile(const Profile& profile, const ColorScheme& sch
     _cursorHeight       = profile.cursorHeight;
     _cursorColorOverride= profile.cursorColor;
 
+    // Intense text style (bold = bright/bold/both).
+    _intenseTextStyle = profile.intenseTextStyle;
+
+    // Scrollback cap.
+    _terminal->SetMaxScrollback(profile.historySize);
+
     // Padding.
     _padding = std::max(0, profile.padding);
 
@@ -218,13 +224,18 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
 
     const TextAttribute& attr = cell.attr;
 
-    auto resolveColor = [this](const TextColor& tc, bool isFg) -> QColor {
+    auto resolveColor = [this](const TextColor& tc, bool isFg, bool isBold) -> QColor {
         switch (tc.type) {
         case ColorType::Default:
             return isFg ? _colorScheme.foreground : _colorScheme.background;
-        case ColorType::Index16:
-            return (tc.index() < 16) ? _colorScheme.ansiColors[tc.index()]
-                                     : _colorScheme.foreground;
+        case ColorType::Index16: {
+            int idx = tc.index();
+            // Apply intenseTextStyle: bold + colors 0-7 → use bright variants 8-15.
+            if (isFg && isBold && idx < 8 && _intenseTextStyle != IntenseTextStyle::Bold) {
+                idx += 8;
+            }
+            return (idx < 16) ? _colorScheme.ansiColors[idx] : _colorScheme.foreground;
+        }
         case ColorType::Index256:
             return colorFrom256(_colorScheme, tc.index());
         case ColorType::RGB:
@@ -233,8 +244,8 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
         return isFg ? _colorScheme.foreground : _colorScheme.background;
     };
 
-    QColor fg = resolveColor(attr.fg, true);
-    QColor bg = resolveColor(attr.bg, false);
+    QColor fg = resolveColor(attr.fg, true,  attr.bold);
+    QColor bg = resolveColor(attr.bg, false, false);
 
     // For filled cursor shapes, invert fg/bg.
     const bool filledCursor = isCursor && (
@@ -263,7 +274,10 @@ void TerminalWidget::_paintCell(QPainter& p, int row, int col,
 
     if (cell.ch != U' ' && cell.ch != 0) {
         QFont f = _font;
-        if (attr.bold)   { f.setBold(true); }
+        // Bold font: only when intenseTextStyle is Bold or All.
+        if (attr.bold && _intenseTextStyle != IntenseTextStyle::Bright) {
+            f.setBold(true);
+        }
         if (attr.italic) { f.setItalic(true); }
         p.setFont(f);
         p.setPen(fg);
